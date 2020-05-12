@@ -21,6 +21,6 @@ VOLUME /data
 #网页端口
 EXPOSE 8080
 EXPOSE 3000
-
+RUN chmod -R 777 ./
 #启用服务
 CMD [ "npm", "run","dev" ]
