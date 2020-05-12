@@ -4,7 +4,7 @@ import './style/MusicPlayer.scss';
 const classNames = require('classnames');
 const util = require("../util");
 const clientUtil = require("./clientUtil");
-const { getDir, getFn, getUrl } = clientUtil;
+const { getDir, getBaseName, getUrl } = clientUtil;
 
 export default class MusicPlayer extends Component {
     constructor(prop) {
@@ -14,15 +14,23 @@ export default class MusicPlayer extends Component {
         };
     }
 
-    componentDidUpdate(){
+    bindEvent(){
         const that = this;
         this.refs.audio.addEventListener('ended', () => {
-            const next = that.state.index + 1;
+            let next = that.state.index + 1;
             if(next === that.props.audioFiles.length){
                 next = 0;
             }
             that.handleIndexChange(next);
         });
+    }
+
+    componentDidMount(){
+        this.bindEvent();
+    }
+
+    componentDidUpdate(){
+
     }
 
     handleIndexChange(index){
@@ -40,7 +48,7 @@ export default class MusicPlayer extends Component {
             const cn = classNames("aji-music-player-item", {
                 "aji-music-player-active  fas fa-volume-up": ii === index
             })
-            return (<div key={e} className={cn} onClick={this.handleIndexChange.bind(this, ii)}> {getFn(e, "/")} </div>)
+            return (<div key={e} className={cn} onClick={this.handleIndexChange.bind(this, ii)}> {getBaseName(e, "/")} </div>)
         });
 
         if(audioFiles.length === 0){

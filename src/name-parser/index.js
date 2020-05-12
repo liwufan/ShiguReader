@@ -3,8 +3,6 @@ const same_tags = config.same_tags;
 const not_author_but_tag = config.not_author_but_tag;
 const char_names = require("./character-names");
 const convertTable = {};
-const util = require("../util");
-const isCompress = util.isCompress;
 
 
 const localCache = {};
@@ -23,6 +21,8 @@ for(let index = 2; index < 20; index++){
     ALL_COMIC_TAGS.push(`COMIC1☆${index}`);
 }
 
+const tag_to_date_table = {};
+
 //for sort algo, not very accurate
 function getDateFromTags(tags){
   if(!tags || tags.length === 0){
@@ -36,7 +36,9 @@ function getDateFromTags(tags){
   let year;
   let month;
   if(tag){
-    if(comiket_tags.includes(tag)){
+    if (tag_to_date_table[tag]) {
+        result = tag_to_date_table[tag];
+    } else if(comiket_tags.includes(tag)) {
         tag = tag.replace("C", "");
         num = parseInt(tag);
         year = Math.floor(num /2) + 1971;
@@ -44,10 +46,10 @@ function getDateFromTags(tags){
         month = isSummer? 8 : 11;
         const day = isSummer? 10: 28;
         result = new Date(year, month, day);
-    }else if(comic_star_tags.includes(tag)){
+        tag_to_date_table[tag] = result;
+    } else if(comic_star_tags.includes(tag)) {
         tag = tag.replace("COMIC1☆", "");
         num = parseInt(tag);
-
         if(num <= 10){
             //once per year
             result = new Date(2006+num, 3, 30);
@@ -57,6 +59,7 @@ function getDateFromTags(tags){
             month = num % 2 === 0? 10 : 4;
             result = new Date(year, month, 30);
         }
+        tag_to_date_table[tag] = result;
     }
   }
 
@@ -154,7 +157,7 @@ function toLowerCase(list, str){
 }
 
 function parse(str) {
-    if (!str || !isCompress(str) || localCache[str] === "NO_EXIST") {
+    if (!str || localCache[str] === "NO_EXIST") {
       return null;
     }
 
@@ -262,7 +265,56 @@ function parse(str) {
     return result;
 }
 
+
+
+module.exports.sort_file_by_time = function(files, fileInfos, getBaseName, fromEarly, onlyMtime){
+    const byFn = (a, b) => {
+        const ap = getBaseName(a);
+        const bp = getBaseName(b);
+        return ap.localeCompare(bp);
+    }
+    
+    function comprTime(at, bt, a, b, fromEarly){
+        let result;
+        if(fromEarly){
+            result = at - bt;
+        }else{
+            result = bt - at;
+        }
+        
+        if(result === 0){
+            result = byFn(a, b);
+        }
+        return result;
+    }
+
+    files.sort((a, b) => {
+        const fileTimeA = (fileInfos[a] && fileInfos[a].mtimeMs) || Infinity;
+        const fileTimeB = (fileInfos[b] && fileInfos[b].mtimeMs) || Infinity;
+
+        if(onlyMtime){
+            return comprTime(fileTimeA, fileTimeB, a, b, fromEarly);
+        }else{
+            const pA = parse(a);
+            const pB = parse(b);
+
+            let aboutTimeA = pA && getDateFromTags(pA.tags);
+            let aboutTimeB = pB && getDateFromTags(pB.tags);
+
+            aboutTimeA = aboutTimeA && aboutTimeA.getTime();
+            aboutTimeB = aboutTimeB && aboutTimeB.getTime();
+
+            const t1 = aboutTimeA || fileTimeA;
+            const t2 = aboutTimeB || fileTimeB;
+
+            return comprTime(t1, t2, a, b, fromEarly);
+        }
+    });
+}
+
+
 module.exports.parse = parse;
 module.exports.isOnlyDigit = isOnlyDigit;
 module.exports.ALL_COMIC_TAGS = ALL_COMIC_TAGS;
 module.exports.getDateFromTags = getDateFromTags;
+module.exports.includesWithoutCase = includesWithoutCase;

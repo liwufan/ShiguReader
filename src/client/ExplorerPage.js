@@ -22,11 +22,11 @@ const nameParser = require('../name-parser');
 const classNames = require('classnames');
 const Constant = require("../constant");
 const clientUtil = require("./clientUtil");
-const { getDir, getFn, getPerPageItemNumber, stringHash } = clientUtil;
+const { getDir, getBaseName, getPerPageItemNumber, stringHash } = clientUtil;
 const { isVideo, isCompress } = util;
 
-const { SORT_BY_DATE, 
-        SORT_BY_DATE_REVERSE,
+const { SORT_FROM_LATEST, 
+        SORT_FROM_EARLY,
         SORT_BY_FOLDER,
         SORT_BY_FILENAME,
         SORT_FROM_SMALL,
@@ -40,6 +40,10 @@ const { MODE_TAG,
         MODE_EXPLORER} = Constant;
 
 const GOOD_STANDARD = 2;
+
+function parse(str){
+    return nameParser.parse(getBaseName(str));
+}
 
 export default class ExplorerPage extends Component {
     constructor(prop) {
@@ -57,7 +61,7 @@ export default class ExplorerPage extends Component {
         const parsed = reset? {} : queryString.parse(location.hash);
         const pageIndex = parseInt(parsed.pageIndex) || 1;
         const isRecursive = !!(parsed.isRecursive === "true");
-        const sortOrder = parsed.sortOrder || SORT_BY_DATE;
+        const sortOrder = parsed.sortOrder || SORT_FROM_LATEST;
         const showVideo = !!(parsed.showVideo === "true");
     
         return {
@@ -85,11 +89,26 @@ export default class ExplorerPage extends Component {
         this.setStateAndSetHash({ pageIndex: index});
     }
 
-    getHash() {
-        return this.props.match.params.tag || 
-               this.props.match.params.author ||
-               this.props.match.params.search ||
-               this.props.match.params.number;
+    next(){
+        if(this.pagination && this.pagination.hasNext()){
+            let next = this.state.pageIndex+1;
+            this.handlePageChange(next);
+        }
+    }
+
+    prev(){
+        if(this.pagination && this.pagination.hasPrev()){
+            let next = this.state.pageIndex-1;
+            this.handlePageChange(next);
+        }
+    }
+
+    getHash(props) {
+        const _props = props || this.props;
+        return _props.match.params.tag || 
+               _props.match.params.author ||
+               _props.match.params.search ||
+               _props.match.params.number;
     }
 
     getMode(props){
@@ -146,6 +165,8 @@ export default class ExplorerPage extends Component {
     componentDidMount() {
         this.askServer();
 
+        this.bindUserInteraction();
+
         Sender.get('/api/getGoodAuthorNames', res =>{
             this.setState({
                 goodAuthors: res.goodAuthors,
@@ -153,17 +174,28 @@ export default class ExplorerPage extends Component {
             })
         });
     }
+
+    bindUserInteraction(){
+        document.addEventListener('keydown', this.handleKeyDown.bind(this));
+    }
+
+    componentWillUnmount(){
+        document.removeEventListener("keydown", this.handleKeyDown.bind(this));
+    }
     
     componentDidUpdate(prevProps, prevState) {
         //when path changes, does not show previous path's content 
-        const differentMode = this.getMode() !== this.getMode(prevProps);
-        const pathChanged = this.getMode() === MODE_EXPLORER && this.path && this.path !== this.getPathFromLocalStorage();
+        const prevMode = this.getMode(prevProps);
+        const prevHash = this.getHash(prevProps);
+        const differentMode = this.getMode() !== prevMode;
+        const sameMode = !differentMode;
+        const pathChanged = !!(sameMode && this.getHash() !== prevHash );
         if(differentMode || pathChanged ){
             this.loadedHash = "";
             this.videoFiles = []
             this.files = [];
             this.dirs = [];
-            this.path = this.getPathFromLocalStorage() || "";
+            this.path = this.getPathFromLocalStorage()
             this.tag = "";
             this.author = "";
             this.fileInfos = {};
@@ -219,9 +251,20 @@ export default class ExplorerPage extends Component {
         });
     }
 
+    handleKeyDown(event) {
+        const key = event.key.toLowerCase();
+        if (key === "arrowright" || key === "d" || key === "l") {
+          this.next();
+          event.preventDefault();
+        } else if (key === "arrowleft" || key === "a" || key === "j") {
+          this.prev();
+          event.preventDefault();
+        }
+    }
+
     getPathFromLocalStorage(){
         const hash = this.getHash();
-        return clientUtil.getPathFromLocalStorage(hash);
+        return clientUtil.getPathFromLocalStorage(hash) || "";
     }
 
     requestSearch() {
@@ -239,7 +282,11 @@ export default class ExplorerPage extends Component {
     }
 
     getPageNum(fp){
-       return (this.zipInfo[fp] && this.zipInfo[fp].pageNum) || 0;
+       return +(this.zipInfo[fp] && this.zipInfo[fp].pageNum) || 0;
+    }
+
+    getMusicNum(fp){
+        return +(this.zipInfo[fp] && this.zipInfo[fp].musicNum) || 0;
     }
     
     getFilteredFiles(){
@@ -250,7 +297,7 @@ export default class ExplorerPage extends Component {
 
         if(filterByGoodAuthorName && goodSet && otherSet){
             files = files.filter(e => {
-                const temp = nameParser.parse(e);
+                const temp = parse(e);
                 if(temp && temp.author && goodSet[temp.author] && goodSet[temp.author] > GOOD_STANDARD){
                     return e;
                 }
@@ -260,7 +307,7 @@ export default class ExplorerPage extends Component {
         if(filterByOversizeImage){
            files = files.filter(e => {
                if(this.zipInfo[e]){
-                   const pageNum = getPageNum(e);
+                   const pageNum = this.getPageNum(e);
                    const stats = this.fileInfos[e];
                    const size = stats && stats.size;
                    if(pageNum > 0 && size/pageNum/1000/1000 > userConfig.oversized_image_size){
@@ -272,7 +319,7 @@ export default class ExplorerPage extends Component {
 
         if(filterByFirstTime && goodSet && otherSet){
             files = files.filter(e => {
-                const temp = nameParser.parse(e);
+                const temp = parse(e);
                 if(temp && temp.author && ((goodSet[temp.author]||0) + (otherSet[temp.author]||0)) <= 1){
                     
                     return e;
@@ -328,12 +375,11 @@ export default class ExplorerPage extends Component {
         return files.slice((this.state.pageIndex-1) * this.getNumPerPage(), (this.state.pageIndex) * this.getNumPerPage());
     }
 
-
     sortFiles(files, sortOrder){
         //-------sort algo
         const byFn = (a, b) => {
-            const ap = getFn(a);
-            const bp = getFn(b);
+            const ap = getBaseName(a);
+            const bp = getBaseName(b);
             return ap.localeCompare(bp);
         }
 
@@ -353,43 +399,10 @@ export default class ExplorerPage extends Component {
                     return byFn(a, b)
                 }
             });
-        }else if (sortOrder === SORT_BY_DATE ||  sortOrder === SORT_BY_DATE_REVERSE){
-            files.sort((a, b) => {
-               
-
-                const fileTimeA = (this.fileInfos[a] && this.fileInfos[a].mtimeMs) || Infinity;
-                const fileTimeB = (this.fileInfos[b] && this.fileInfos[b].mtimeMs) || Infinity;
-
-                function comprTime(at, bt){
-                    let result;
-                    if(sortOrder === SORT_BY_DATE_REVERSE){
-                        result = at - bt;
-                    }else{
-                        result = bt - at;
-                    }
-
-                    if(result === 0){
-                        result = byFn(a, b);
-                    }
-                    return result;
-                }
-
-                if(this.getMode() === MODE_EXPLORER){
-                    return comprTime(fileTimeA, fileTimeB);
-                }else{
-
-                    const pA = nameParser.parse(getFn(a));
-                    const pB = nameParser.parse(getFn(b));
-    
-                    let aboutTimeA = pA && nameParser.getDateFromTags(pA.tags);
-                    let aboutTimeB = pB && nameParser.getDateFromTags(pB.tags);
-    
-                    aboutTimeA = aboutTimeA && aboutTimeA.getTime();
-                    aboutTimeB = aboutTimeB && aboutTimeB.getTime();
-
-                    return comprTime(aboutTimeA || fileTimeA, aboutTimeB || fileTimeB);
-                }
-            });
+        }else if (sortOrder === SORT_FROM_LATEST ||  sortOrder === SORT_FROM_EARLY){
+            const fromEarly = sortOrder === SORT_FROM_EARLY;
+            const onlyBymTime = this.getMode() === MODE_EXPLORER;
+            nameParser.sort_file_by_time(files, this.fileInfos, getBaseName, fromEarly, onlyBymTime);
         } else if (sortOrder === SORT_FROM_BIG || sortOrder === SORT_FROM_SMALL){
             files.sort((a, b) => {
                 const ass = (this.fileInfos[a] && this.fileInfos[a].size) || 0;
@@ -416,11 +429,11 @@ export default class ExplorerPage extends Component {
         this.isAlreadyRandom = inRandom;
     }
 
-    getOneLineListItem(icon, item){
+    getOneLineListItem(icon, fileName, filePath){
         return (
-        <li className="explorer-one-line-list-item" key={item}>
+        <li className="explorer-one-line-list-item" key={fileName} title={filePath}>
         {icon}
-        <span className="explorer-one-line-list-item-text">{item}</span>
+        <span className="explorer-one-line-list-item-text">{fileName}</span>
         </li>);
     }
 
@@ -447,16 +460,16 @@ export default class ExplorerPage extends Component {
         const dirItems = dirs.map((item) =>  {
             const pathHash = stringHash(item);
             const toUrl =('/explorer/'+ pathHash);
-            const text = this.getMode() === MODE_HOME ? item: getFn(item);
-            const result =  this.getOneLineListItem(<i className="far fa-folder"></i>, text);
+            const text = this.getMode() === MODE_HOME ? item: getBaseName(item);
+            const result =  this.getOneLineListItem(<i className="far fa-folder"></i>, text, item);
             return  <Link to={toUrl}  key={item}>{result}</Link>;
         });
 
         let videoItems = videos.map((item) =>  {
             const pathHash = stringHash(item);
             const toUrl =('/videoPlayer/'+ pathHash);
-            const text = getFn(item);
-            const result = this.getOneLineListItem(<i className="far fa-file-video"></i>, text);
+            const text = getBaseName(item);
+            const result = this.getOneLineListItem(<i className="far fa-file-video"></i>, text, item);
             return  <Link to={toUrl}  key={item}>{result}</Link>;
         });
 
@@ -467,7 +480,7 @@ export default class ExplorerPage extends Component {
         //and tag
         let breadcrumbCount = 0;
         const zipfileItems = files.map((item, index) => {
-            const text = getFn(item);
+            const text = getBaseName(item);
             const pathHash = stringHash(item);
             const toUrl =  '/onebook/' + pathHash;
 
@@ -482,7 +495,7 @@ export default class ExplorerPage extends Component {
                 const prev = files[index - 1];
                 if(!prev || getDir(prev) !== getDir(item)){
                     seperator = (<div className="col-12"  key={item+"---seperator"}> 
-                                 <Breadcrumb path={getDir(item)} className={breadcrumbCount > 0? "not-first-breadcrumb": "" }/>
+                                 <Breadcrumb  path={getDir(item)} className={breadcrumbCount > 0? "not-first-breadcrumb folder-seperator": "folder-seperator" }/>
                                  </div>);
                     breadcrumbCount++;
                 }
@@ -492,14 +505,26 @@ export default class ExplorerPage extends Component {
 
             if(this.state.noThumbnail){
                 zipItem = (<Link to={toUrl}  key={item} className={""}>
-                        {this.getOneLineListItem(<i className="fas fa-book"></i>, text)}
+                        {this.getOneLineListItem(<i className="fas fa-book"></i>, text, item)}
                         </Link>)
             }else{
+                const fl = text.length;
+                const cellTitleCn = classNames("file-cell-title",{
+                    "f-s-12": fl > 30,
+                    "f-s-14": fl <= 30
+                });
+
+                const musicNum = this.getMusicNum(item);
+
+                const fileInfoRowCn = classNames("file-info-row", {
+                    "less-padding": musicNum > 0
+                })
+
                 zipItem = (
                 <div key={item} className={"col-sm-6 col-md-4 col-lg-3 file-out-cell"}>
                     <div className="file-cell">
                         <Link  target="_blank" to={toUrl}  key={item} className={"file-cell-inner"}>
-                            <center className={"file-cell-title"} title={text}>{text}</center>
+                            <center className={cellTitleCn} title={text}>{text}</center>
                             <LoadingImage 
                                     isThumbnail 
                                     className={"file-cell-thumbnail"} 
@@ -508,11 +533,12 @@ export default class ExplorerPage extends Component {
                                     onReceiveUrl={url => {this.thumbnails[item] = url;}} 
                                     />
                         </Link>
-                        <div className="file-info-row">
+                        <div className={fileInfoRowCn}>
                             <span>{fileSize}</span>
                             <span>{`${this.getPageNum(item)} pages`}</span>
+                            {musicNum > 0 && <span>{`${musicNum} songs`}</span>}
                         </div>
-                        <FileChangeToolbar file={item} />
+                        <FileChangeToolbar className="explorer-file-change-toolbar" file={item} />
                     </div>
                 </div>);
             }
@@ -572,20 +598,22 @@ export default class ExplorerPage extends Component {
     renderToggleThumbNailButton(){
         const text2 = this.state.noThumbnail? "Show Thumbnail" : "File Name Only";
         return (
-           <span className="thumbnail-button exp-top-button" onClick={this.toggleThumbNail.bind(this)}>
+           <span key="thumbnail-button" className="thumbnail-button exp-top-button" onClick={this.toggleThumbNail.bind(this)}>
                 <span className="fas fa-book" /> <span>{text2} </span> 
             </span>
         );
     }
 
     renderShowVideoButton(){
-        const text2 = this.state.showVideo? "hide video" : "show video";
-        return (
-            <span className="show-video-button exp-top-button" onClick={this.toggleShowVideo.bind(this)}> 
-            <span className="fas fa-video" />
-            <span> {text2} </span>
-            </span>
-        );
+        if(this.videoFiles && this.videoFiles.length > 0){
+            const text2 = this.state.showVideo? "hide video" : "show video";
+            return (
+                <span className="show-video-button exp-top-button" onClick={this.toggleShowVideo.bind(this)}> 
+                <span className="fas fa-video" />
+                <span> {text2} </span>
+                </span>
+            );
+        }
     }
 
     renderLevelButton(){
@@ -598,35 +626,44 @@ export default class ExplorerPage extends Component {
      );
     }
 
-    
     renderToggleMenuButton(){
         const text = "toggle side menu"
         return (
-           <span className="toggle-side-menu-button exp-top-button" onClick={this.toggleSideMenu.bind(this)}> 
+           <span key="toggle-side-menu-button" className="toggle-side-menu-button exp-top-button" onClick={this.toggleSideMenu.bind(this)}> 
            <span className="fas fa-ellipsis-h" />
            <span> {text} </span>
            </span>
         );
-       }
+    }
+
+    renderChartButton(){
+        if(this.getMode() === MODE_EXPLORER){
+            return (<Link target="_blank" className="exp-top-button" to={'/chart/'+this.getHash()}>  
+                         <span className="fas fa-chart-line" /> 
+                         <span> chart </span>
+                    </Link>)
+        }
+    }
 
     getExplorerToolbar(){
         const mode = this.getMode();
         if(mode === MODE_EXPLORER && this.path){
-            const topButtons = (
+            const totalSize = this.getTotalFileSize();
+            let topButtons = (
             <div className="top-button-gropus row">
-                    <div className="col-6 col-md-3"> {this.renderToggleThumbNailButton()} </div>
-                    <div className="col-6 col-md-3"> {this.renderLevelButton()} </div>
-                    <div className="col-6 col-md-3"> {this.renderShowVideoButton()} </div>
-                    <div className="col-6 col-md-3 d-flex flex-xl-row-reverse" > {this.renderToggleMenuButton()} </div>  
+                    <div className="file-count col-6 col-md-4"><i className="fas fa-file-archive"/>{this.getFilteredFiles().length + " compressed files"} </div>
+                    <div className="file-count col-6 col-md-4"><i className="fas fa-film"/>{this.getFilteredVideos().length + " video files"} </div>
+                    <div className="file-count col-6 col-md-4"><i className="fas fa-hdd"/>{filesizeUitl(totalSize, {base: 2})} </div>
+                    <div className="col-6 col-md-4"> {this.renderToggleThumbNailButton()} </div>
+                    <div className="col-6 col-md-4"> {this.renderLevelButton()} </div>
+                    <div className="col-6 col-md-4"> {this.renderShowVideoButton()} </div>
+                    <div className="col-6 col-md-4 " > {this.renderToggleMenuButton()} </div>  
+                    <div className="col-6 col-md-4"> {this.renderChartButton()} </div>
             </div>);
 
-            return (<div className="container explorer-top">
+            return (<div className="container explorer-top-bar-container">
                         <div className="row">
                             <Breadcrumb path={this.path} className="col-12" /> 
-                        </div>
-                        <div className="row">
-                            <div className="file-count col-6">{this.getFilteredFiles().length + " compressed files"} </div>
-                            <div className="file-count col-6">{this.getFilteredVideos().length + " video files"} </div>
                         </div>
                         {topButtons}
                     </div>);
@@ -661,17 +698,15 @@ export default class ExplorerPage extends Component {
 
             let btn;
             if(this.getMode() === MODE_AUTHOR || this.getMode() === MODE_TAG || this.getMode() === MODE_SEARCH){
-                btn = this.renderToggleThumbNailButton();
+                btn = [this.renderToggleThumbNailButton(), this.renderToggleMenuButton()] ;
             }
 
             const videoButuon = isSearchMode &&  this.renderShowVideoButton();
-            const menuButton = isSearchMode && this.renderToggleMenuButton();
 
             return (<center className={"location-title"}>
                         <a className="explorer-external-link" target="_blank" href={link} title={title}>{this.getTitle()} </a>
                         {btn}
                         {videoButuon}
-                        {menuButton}
                     </center>);
         } 
     }
@@ -686,7 +721,8 @@ export default class ExplorerPage extends Component {
         }
     
         const that =this;
-        return (<Pagination current={this.state.pageIndex}  
+        return (<Pagination ref={ref => this.pagination = ref}
+                            current={this.state.pageIndex}  
                             pageSize={this.getNumPerPage()}
                             showQuickJumper={{goButton: true}}
                             total={fileLength} 
@@ -750,10 +786,22 @@ export default class ExplorerPage extends Component {
         });
     }
 
+    getTotalFileSize(){
+        let files = this.getFilteredFiles();
+        files = files.concat(this.getFilteredVideos())
+        let totalSize = 0;
+        files.forEach(e => {
+            if(this.fileInfos[e]){
+                totalSize += this.fileInfos[e].size;
+            }
+        });
+        return totalSize;
+    }
+
     renderSideMenu(){
         const SORT_OPTIONS = [
-            SORT_BY_DATE,
-            SORT_BY_DATE_REVERSE,
+            SORT_FROM_LATEST,
+            SORT_FROM_EARLY,
             SORT_FROM_BIG,
             SORT_FROM_SMALL,
             SORT_BY_FILENAME
@@ -765,20 +813,10 @@ export default class ExplorerPage extends Component {
 
         SORT_OPTIONS.push(SORT_RANDOMLY);
 
-        let info;
-        const files = this.getFilteredFiles() || [];
-        let totalSize = 0;
-        files.forEach(e => {
-            if(this.fileInfos[e]){
-                totalSize += this.fileInfos[e].size;
-            }
-        });
-        info = <div className="side-menu-folder-small-info">{filesizeUitl(totalSize, {base: 2})} </div>
-
         const tag2Freq = {};
-
+        const files = this.getFilteredFiles();
         files.forEach(e => {
-            const result = nameParser.parse(getFn(e));
+            const result = parse(e);
             let tags = (result && result.tags)||[];
 
             tags.forEach(t => {
@@ -796,34 +834,35 @@ export default class ExplorerPage extends Component {
         })
 
         const tagInfos = tags.slice(0, 30).map(t => {
-            return (<div className="side-menu-single-tag" onClick={() => this.setFilterText(t)} key={t}>
+            return (<div className="side-menu-single-tag col-3" onClick={() => this.setFilterText(t)} key={t}>
                         {t}<span>({tag2Freq[t]})</span> 
                     </div>);
         });
 
 
         const showAll = (
-        <div className="side-menu-single-tag" onClick={() => this.setFilterText("")} key={"----null------"}>
+        <div className="side-menu-single-tag col-3" onClick={() => this.setFilterText("")} key={"side-menu-single-tag-all"}>
             All
         </div>);
 
         tagInfos.unshift(showAll);
+        const tagContainer = (<div className="exp-tag-container row">{tagInfos} </div>);
 
         if(this.getMode() !== MODE_HOME){
-            const cn = classNames("side-menu", "side-menu-click-layer", {
+            const cn = classNames("side-menu container", {
                 anchorSideMenu: this.state.anchorSideMenu
             });
 
             return (<div className={cn}>
                     <div className="side-menu-radio-title"> File Order </div>
-                    <RadioButtonGroup 
+                    <RadioButtonGroup  
+                            className="sort-radio-button-group"
                             checked={SORT_OPTIONS.indexOf(this.state.sortOrder)} 
                             options={SORT_OPTIONS} name="explorer-sort-order" 
                             onChange={this.onSortChange.bind(this)}/>
                     <div className="side-menu-radio-title"> Special Filter </div>
                     {this.renderSpecialFilter()}
-                    {info}
-                    {tagInfos}
+                    {tagContainer}
                 </div>)
         }
     }
@@ -855,12 +894,12 @@ export default class ExplorerPage extends Component {
                                 {st4}   
                             </Checkbox> ); 
         return (
-        <React.Fragment>
+        <div className="speical-checkbox-container">
             {checkbox}
             {checkbox2}
             {checkbox3}
             {checkbox4}
-        </React.Fragment>);
+        </div>);
     }
 
     render() {
@@ -873,9 +912,9 @@ export default class ExplorerPage extends Component {
         const cn = classNames("explorer-container-out", this.getMode().replace(" ", "_"));
 
         return (<div className={cn} >
-            {this.renderSideMenu()}
             {this.getLinkToEhentai()}
             {this.getExplorerToolbar()}
+            {this.renderSideMenu()}
             {this.renderFileList()}
             {this.renderPagination()}
             </div>

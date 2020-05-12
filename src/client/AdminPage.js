@@ -11,7 +11,7 @@ const userConfig = require('../user-config');
 import RadioButtonGroup from './subcomponent/RadioButtonGroup';
 const filesizeUitl = require('filesize');
 const clientUtil = require("./clientUtil");
-const { getPathFromLocalStorage, getFn } = clientUtil;
+const { getPathFromLocalStorage, getBaseName } = clientUtil;
 const dateFormat = require('dateformat');
 
 export default class AdminPage extends Component {
@@ -128,7 +128,7 @@ export default class AdminPage extends Component {
             <Link to={toUrl}  key={hash} className={"history-link"}>
                 <div className="history-one-line-list-item" key={filePath}>
                     <span className="date-text"> {timeStr} </span>
-                    <span className="file-text" title={filePath}> {getFn(filePath)}</span>
+                    <span className="file-text" title={filePath}> {getBaseName(filePath)}</span>
                 </div>
             </Link>);
         });
@@ -136,7 +136,9 @@ export default class AdminPage extends Component {
         return (
         <div className="history-section admin-section">
             <div className="admin-section-title"> Recent Read</div>
-            {history}
+            <div className="admin-section-content">
+                {history}
+            </div>
         </div>)
     }
 
@@ -159,9 +161,11 @@ export default class AdminPage extends Component {
         }else{
             content = (<React.Fragment>
                         <div className="admin-section-title">Type password to move/delete file </div>
+                        <div className="admin-section-content">
                          {this.getPasswordInput() && <div> wrong password </div>}
-                        <input className="aji-path-intput" ref={pathInput => this.passwordInputRef = pathInput}
+                        <input className="admin-intput" ref={pathInput => this.passwordInputRef = pathInput}
                                     placeholder="...type here"  onChange={this.setPasswordCookie.bind(this)}/>
+                        </div>
                         </React.Fragment>);
         }
 
@@ -223,18 +227,18 @@ export default class AdminPage extends Component {
                     <div className="admin-section-content">
                         <RadioButtonGroup checked={folder_list.indexOf(this.state.prePath)} 
                                         options={folder_list} name="pregenerate" onChange={this.onPathChange.bind(this)}/>
-                        <input className="aji-path-intput" ref={pathInput => this.pathInputRef = pathInput} placeholder="...or any other path"/>
-                        <div className="submit" onClick={this.onPrenerate.bind(this)}>Submit</div>
+                        <input className="admin-intput" ref={pathInput => this.pathInputRef = pathInput} placeholder="...or any other path"/>
+                        <div className="submit-button" onClick={this.onPrenerate.bind(this)}>Submit</div>
                     </div>
                 </div>
 
                 <div className="admin-section">
                     <div className="admin-section-title" title="only keep thumbnail and delete other files"> Clean Cache</div>
-                    {cacheInfo}
                     <div className="admin-section-content">
-                        <div className="submit" onClick={this.cleanCache.bind(this)}>clean</div>
-                        <span className="admin-section-text" > only keep thumbnails and delete other files</span>
-                        {/* <div className="submit" onClick={this.cleanCache.bind(this, "minized")}>clean and make thumbnail file smaller to save distk space</div> */}
+                        {cacheInfo}
+                        <div className="submit-button" onClick={this.cleanCache.bind(this)}>clean</div>
+                        <span className="" > only keep thumbnails and delete other files</span>
+                        {/* <div className="submit-button" onClick={this.cleanCache.bind(this, "minized")}>clean and make thumbnail file smaller to save distk space</div> */}
                     </div>
                 </div>
 

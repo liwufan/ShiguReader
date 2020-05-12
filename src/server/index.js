@@ -22,7 +22,6 @@ const qrcode = require('qrcode-terminal');
 
 const {
         fullPathToUrl,
-        getOutputPath,
         turnPathSepToWebSep,
         generateContentUrl,
         isExist,
@@ -35,7 +34,7 @@ const rootPath = pathUtil.getRootPath();
 const cache_folder_name = userConfig.cache_folder_name;
 const cachePath = path.join(rootPath, cache_folder_name);
 let logPath = path.join(rootPath, userConfig.workspace_name, "log");
-logPath = path.join(logPath, dateFormat(new Date(), "yyyy-mm-dd-hh-mm"))+ ".log";
+logPath = path.join(logPath, dateFormat(new Date(), "yyyy-mm-dd HH-MM"))+ ".log";
 
 //set up json DB
 const JsonDB = require('node-json-db').JsonDB;
@@ -109,8 +108,14 @@ function isDisplayableInOnebook(e){
     return isImage(e)||isMusic(e);
 }
 
+function parse(str){
+    return nameParser.parse(path.basename(str, path.extname(str)));
+}
+
+const includesWithoutCase =  nameParser.includesWithoutCase;
+
 function updateTagHash(str){
-    const result = nameParser.parse(str);
+    const result = parse(str);
     if(result){
         result.tags.forEach(tag => {
             db.hashTable[stringHash(tag)] = tag;
@@ -122,19 +127,49 @@ function updateTagHash(str){
     }
 }
 
+const getCacheOutputPath = function (cachePath, zipFilePath) {
+    let outputFolder;
+    outputFolder = path.basename(zipFilePath, path.extname(zipFilePath));
+    if(!userConfig.readable_cache_folder_name){
+        outputFolder = stringHash(zipFilePath).toString();
+    }else{
+        outputFolder = outputFolder.replace(/[`~!@#$%^&*()_|+\-=?;:'",.<>/]/gi, '');
+    }
+    outputFolder = outputFolder.trim();
+
+    let stat = db.fileToInfo[zipFilePath];
+    if (!stat) {
+        //should have stat in fileToInfo
+        //but chokidar is not reliable
+        //getCacheOutputPath comes before chokidar callback
+        console.warn("[getCacheOutputPath] no stat", zipFilePath);
+    } else {
+        const mdate = new Date(stat.mtimeMs);
+        const mstr = dateFormat(mdate, "yyyy-mm-dd");
+        const fstr = (stat.size/1000/1000).toFixed();
+        outputFolder = outputFolder+ `${mstr} ${fstr} `;
+    }
+    return path.join(cachePath, outputFolder);
+}
+
 const app = express();
 const db = {
-    //a list of all files
-    allFiles : [],
     //file path to file stats
     fileToInfo: {},
-    //cache path to file stats
-    cacheToInfo: {},
-    //a list of cache files folder -> files
-    cacheTable: {},
     //hash to any string
     hashTable: {},
 };
+
+const cacheDb = {
+    //a list of cache files folder -> files
+    folderToFiles: {},
+    //cache path to file stats
+    cacheFileToInfo: {}
+}
+
+function getAllFilePathes(){
+    return _.keys(db.fileToInfo);
+}
 
 app.use(express.static('dist', {
     maxAge: (1000*3600).toString()
@@ -153,8 +188,8 @@ fileChangeHandler.init(app, logger);
 function getCacheFiles(outputPath) {
     //in-memory is fast
     const single_cache_folder = path.basename(outputPath);
-    if(db.cacheTable[single_cache_folder] && db.cacheTable[single_cache_folder].length > 0){
-        return generateContentUrl(db.cacheTable[single_cache_folder], outputPath);
+    if(cacheDb.folderToFiles[single_cache_folder] && cacheDb.folderToFiles[single_cache_folder].length > 0){
+        return generateContentUrl(cacheDb.folderToFiles[single_cache_folder], outputPath);
     }
     return null;
 }
@@ -172,12 +207,20 @@ async function init() {
     
         if (charset !== 65001) {
             console.error("Please switch you console encoding to utf8 in windows language setting");
+            userConfig.readable_cache_folder_name = false;
         }
     }
 
     console.log("scanning local files");
 
-    const filter = (e) => {return isDisplayableInExplorer(e);};
+    const filter = (e, stat) => {
+        const minSize = 1000 * 10;
+        if(stat.size < minSize){
+            return false;
+        }
+        
+        return isDisplayableInExplorer(e);
+    };
     let beg = (new Date).getTime()
     const results = fileiterator(path_will_scan, { 
         filter:filter, 
@@ -188,21 +231,17 @@ async function init() {
     console.log(`${(end - beg)/1000}s  to read local dirs`);
     console.log("Analyzing local files");
     
-    const arr = [];
     for (let i = 0; i < results.pathes.length; i++) {
         const p = results.pathes[i];
         const ext = path.extname(p).toLowerCase();
         if (!ext ||  isDisplayableInExplorer(ext)) {
-            arr.push(p);
-
             db.hashTable[stringHash(p)] = p;
             updateTagHash(p);
         }
     }
-    db.allFiles = arr || [];
     db.fileToInfo = results.infos;
 
-    console.log("There are",db.allFiles.length, "files");
+    console.log("There are",getAllFilePathes().length, "files");
 
     console.log("----------scan cache------------");
     const cache_results = fileiterator([cachePath], { 
@@ -211,12 +250,12 @@ async function init() {
     });
 
     (cache_results.pathes||[]).forEach(p => {
-        const fp =  getCacheFp(p);
-        db.cacheTable[fp] = db.cacheTable[fp] || [];
-        db.cacheTable[fp].push(path.basename(p));
+        const fp =  getDirName(p);
+        cacheDb.folderToFiles[fp] = cacheDb.folderToFiles[fp] || [];
+        cacheDb.folderToFiles[fp].push(path.basename(p));
     });
 
-    db.cacheToInfo = cache_results.infos;
+    cacheDb.cacheFileToInfo = cache_results.infos;
 
     const {watcher, cacheWatcher} = setUpFileWatch();
     const port = isProduction? http_port: dev_express_port;
@@ -224,7 +263,7 @@ async function init() {
         const lanIP = await internalIp.v4();
         const mobileAddress = `http://${lanIP}:${http_port}`;
         console.log("----------------------------------------------------------------");
-        console.log(dateFormat(new Date(), "yyyy-mm-dd hh:mm"));
+        console.log(dateFormat(new Date(), "yyyy-mm-dd HH:MM"));
         console.log(`Express Server listening on port ${port}`);
         console.log("You can open ShiguReader from Browser now!");
         console.log(`http://localhost:${http_port}`);
@@ -253,9 +292,20 @@ function shouldIgnore(p){
     return !shouldWatch(p);
 }
 
-function getCacheFp(p){
+function getDirName(p){
     const result =  path.dirname(p);
     return path.basename(result);
+}
+
+//!! same as file-iterator getStat()
+function addStatToDb(path, stat){
+    const result = {};
+    result.isFile = stat.isFile();
+    result.isDir = stat.isDirectory();
+    result.mtimeMs = stat.mtimeMs;
+    result.mtime = stat.mtime;
+    result.size = stat.size;
+    db.fileToInfo[path] = result;
 }
 
 function setUpFileWatch(){
@@ -267,22 +317,15 @@ function setUpFileWatch(){
     });
 
     const addCallBack = (path, stats) => {
-        db.allFiles.push(path);
-
         updateTagHash(path);
         db.hashTable[stringHash(path)] = path;
-        stats.isFile = stats.isFile();
-        stats.isDir = stats.isDirectory();
-        db.fileToInfo[path] = stats;
+        addStatToDb(path, stats);
         extractThumbnailFromZip(path);
-
         hentaiCache = null;
     };
 
     const deleteCallBack = path => {
-        const index = db.allFiles.indexOf(path);
-        db.allFiles[index] = "";
-        db.fileToInfo[path] = "";
+        delete db.fileToInfo[path];
         hentaiCache = null;
     };
 
@@ -306,25 +349,26 @@ function setUpFileWatch(){
     cacheWatcher
         .on('unlinkDir', p => {
             const fp =  path.dirname(p);
-            db.cacheTable[fp] = undefined;
+            cacheDb.folderToFiles[fp] = undefined;
         });
 
     cacheWatcher
         .on('add', (p, stats) => {
-            const fp =  getCacheFp(p);
-            db.cacheTable[fp] = db.cacheTable[fp] || [];
-            db.cacheTable[fp].push(path.basename(p));
+            const fp =  getDirName(p);
+            cacheDb.folderToFiles[fp] = cacheDb.folderToFiles[fp] || [];
+            cacheDb.folderToFiles[fp].push(path.basename(p));
 
             stats.isFile = stats.isFile();
             stats.isDir = stats.isDirectory();
-            db.cacheToInfo[p] = stats;
+            cacheDb.cacheFileToInfo[p] = stats;
         })
         .on('unlink', p => {
-            const fp =  getCacheFp(p);
-            db.cacheTable[fp] = db.cacheTable[fp] || [];
-            const index = db.cacheTable[fp].indexOf(path.basename(p));
-            db.cacheTable[fp].splice(index, 1);
-            delete db.cacheToInfo[p];
+            const fp =  getDirName(p);
+            cacheDb.folderToFiles[fp] = cacheDb.folderToFiles[fp] || [];
+            const index = cacheDb.folderToFiles[fp].indexOf(path.basename(p));
+            cacheDb.folderToFiles[fp].splice(index, 1);
+
+            delete cacheDb.cacheFileToInfo[p];
         });
 
     return {
@@ -341,7 +385,7 @@ app.get('/api/exhentaiApi', function (req, res) {
         return;
     }
 
-    let allfiles = db.allFiles.filter(isCompress);
+    let allfiles = getAllFilePathes().filter(isCompress);
     allfiles = allfiles.map(e => {
         return path.basename(e, path.extname(e)).trim();
     });
@@ -354,13 +398,13 @@ app.get('/api/exhentaiApi', function (req, res) {
 
 //-------------------------Get info ----------------------
 app.get('/api/cacheInfo', (req, res) => {
-    const cacheFiles =  _.keys(db.cacheToInfo).filter(isDisplayableInOnebook);
+    const cacheFiles =  _.keys(cacheDb.cacheFileToInfo).filter(isDisplayableInOnebook);
     let totalSize = 0;
 
     const thumbnailNum = cacheFiles.filter(util.isCompressedThumbnail).length;
 
     cacheFiles.forEach(e => {
-        totalSize += db.cacheToInfo[e].size;
+        totalSize += cacheDb.cacheFileToInfo[e].size;
     })
 
     res.send({
@@ -370,41 +414,57 @@ app.get('/api/cacheInfo', (req, res) => {
     })
 });
 
+app.post("/api/singleFileInfo", async (req, res) => {
+    const filePath = (req.body && req.body.filePath);
 
+    if (!filePath || !(await isExist(filePath))) {
+        res.sendStatus(404);
+        return;
+    }
 
-app.get('/api/allInfo', (req, res) => {
-    const tempfileToInfo = {};
-    const allFiles = [];
-    // let beg = (new Date).getTime()
-    db.allFiles.forEach(e => {
-        if(util.isCompress(e)){
-            tempfileToInfo[e] = {
-                size: db.fileToInfo[e].size,
-                mtime:  db.fileToInfo[e].mtime
-            };
-            allFiles.push(e);
-        }
-    })
-
-    const allThumbnails = getThumbnails(allFiles);
-
-    // let end = (new Date).getTime();
-    // console.log((end - beg)/1000, "to search");
+    let stat =  db.fileToInfo[filePath];
+    if(!stat){
+        stat = await pfs.stat(filePath);
+    }
 
     res.send({
-        fileToInfo: tempfileToInfo,
-        allFiles,
-        allThumbnails
+        stat
+    });
+});
+
+app.post('/api/allInfo', (req, res) => {
+    const needThumbnail = req.body && req.body.needThumbnail;
+
+    // const tempfileToInfo = {};
+    // const allFiles = [];
+    // getAllFilePathes().forEach(e => {
+    //     if(util.isCompress(e)){
+    //         tempfileToInfo[e] = {
+    //             size: db.fileToInfo[e].size,
+    //             mtime:  db.fileToInfo[e].mtime
+    //         };
+    //         allFiles.push(e);
+    //     }
+    // })
+
+    let allThumbnails = {};
+    if(needThumbnail){
+        allThumbnails = getThumbnails(getAllFilePathes());
+    }
+
+    res.send({
+        fileToInfo: db.fileToInfo,
+        allThumbnails: allThumbnails
     }); 
 });
 
 function getGoodAndOtherSet(){
     const set = {};
     const otherSet = {};
-    db.allFiles.forEach(p => {
+    getAllFilePathes().forEach(p => {
         const ext = path.extname(p).toLowerCase();
         if(isCompress(ext)){
-            const temp = nameParser.parse(p);
+            const temp = parse(p);
             const name = temp && temp.author;
             if(name){
                 if(p && p.startsWith(userConfig.good_folder_root)){
@@ -448,9 +508,9 @@ app.get('/api/tag', (req, res) => {
 
     const tags = {};
     const authors = {};
-    db.allFiles.forEach((e) => {
+    getAllFilePathes().forEach((e) => {
         e = path.basename(e);
-        const result = nameParser.parse(e);
+        const result = parse(e);
         if (result) {
             addOne(authors, result.author);
             result.tags.forEach(tag => addOne(tags, tag));
@@ -473,62 +533,13 @@ app.get('/api/download/:hash', async (req, res) => {
     res.download(filepath); // Set disposition and send it.
 });
 
-//----------------for video streaming
-app.get('/api/video/:hash', async (req, res) => {
-    const filepath = db.hashTable[req.params.hash];
-
-    if (!filepath || !(await isExist(filepath))) {
-        console.error("[/api/video]", filepath, "does not exist");
-        res.sendStatus(404);
-        return;
-    }
-
-    try{
-        const stat = await pfs.stat(filepath);
-        const fileSize = stat.size;
-        const range = req.headers.range;
-        if (range) {
-          const parts = range.replace(/bytes=/, "").split("-");
-          const start = parseInt(parts[0], 10);
-          const end = parts[1]? parseInt(parts[1], 10) : fileSize-1;
-      
-          if(start >= fileSize) {
-            res.status(416).send('Requested range not satisfiable\n'+start+' >= '+fileSize);
-            return;
-          }
-          
-          const chunksize = (end-start) + 1;
-          const file = fs.createReadStream(filepath, {start, end});
-          const head = {
-            'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-            'Accept-Ranges': 'bytes',
-            'Content-Length': chunksize,
-            'Content-Type': 'video/mp4',
-          };
-      
-          res.writeHead(206, head);
-          file.pipe(res);
-        } else {
-          const head = {
-            'Content-Length': fileSize,
-            'Content-Type': 'video/mp4',
-          };
-          res.writeHead(200, head);
-          fs.createReadStream(filepath).pipe(res)
-        }
-    }catch(e){
-        console.error("[/api/video/]", filePath, e);
-        res.sendStatus(404);
-    }
-  })
-
 //----------------get folder contents
 app.post('/api/homePagePath', function (req, res) {
     let homepathes = path_will_scan;
     //check if pathes really exist
     homepathes = homepathes.filter(e => {
        //there is file in the folder
-       return db.allFiles.some(fp => (fp.length > e.length && fp.includes(e)));
+       return getAllFilePathes().some(fp => (fp.length > e.length && fp.includes(e)));
     });
 
     if(homepathes.length === 0){
@@ -541,6 +552,21 @@ app.post('/api/homePagePath', function (req, res) {
     }
 });
 
+function getPageNum(contentInfo, filePath){
+    if(contentInfo[filePath]){
+        return +(contentInfo[filePath].pageNum) || 0;
+    }else{
+        return 0;
+    }
+}
+
+function getMusicNum(contentInfo, filePath){
+    if(contentInfo[filePath]){
+        return +(contentInfo[filePath].musicNum) || 0;
+    }else{
+        return 0;
+    }
+}
 
 function getThumbnails(filePathes){
     const thumbnails = {};
@@ -551,15 +577,15 @@ function getThumbnails(filePathes){
             return;
         }
 
-        const outputPath = getOutputPath(cachePath, filePath);
+        const outputPath = getCacheOutputPath(cachePath, filePath);
         let cacheFiles = getCacheFiles(outputPath);
         cacheFiles = (cacheFiles && cacheFiles.files) || [];
         const thumb = serverUtil.chooseThumbnailImage(cacheFiles);
         if(thumb){
             thumbnails[filePath] = fullPathToUrl(thumb);
-        }else{
-            const pageNum = contentInfo[filePath] && contentInfo[filePath].pageNum;
-            if(pageNum === "NOT_THUMBNAIL_AVAILABLE" || pageNum === 0){
+        }else if(contentInfo[filePath]){
+            const pageNum = getPageNum(contentInfo, filePath);
+            if(pageNum === 0){
                 thumbnails[filePath] = "NOT_THUMBNAIL_AVAILABLE";
             }
         }
@@ -573,12 +599,12 @@ function getZipInfo(filePathes){
     
     filePathes.forEach(filePath => {
         if(isCompress(filePath) && contentInfo[filePath]){
-            let pageNum = contentInfo[filePath].pageNum;
-            pageNum = pageNum === "NOT_THUMBNAIL_AVAILABLE"? 0 : pageNum;
+            let pageNum = getPageNum(contentInfo, filePath);
+            const musicNum = getMusicNum(contentInfo, filePath);
 
             const entry = {
                 pageNum,
-                musicNum: contentInfo[filePath].musicNum || 0
+                musicNum
             }
 
             fpToInfo[filePath] = entry;
@@ -593,7 +619,7 @@ app.post('/api/lsDir', async (req, res) => {
     const isRecursive = req.body && req.body.isRecursive;
 
     if (!dir || !(await isExist(dir))) {
-        console.error(dir, "does not exist");
+        console.error("[/api/lsDir]", dir, "does not exist");
         res.sendStatus(404);
         return;
     }
@@ -604,33 +630,28 @@ app.post('/api/lsDir', async (req, res) => {
     const dirs = [];
     const infos = {};
     const oneLevel = !isRecursive;
-    db.allFiles.forEach(pp => {
-        if(pp && isSub(dir, pp)){
-            const singleInfo = db.fileToInfo[pp];
+    getAllFilePathes().forEach(pp => {
+        if(pp && isDisplayableInExplorer(pp) && isSub(dir, pp)){
+            //add file's parent
             if(oneLevel && !isDirectParent(dir, pp)){
                 let itsParent = path.resolve(pp, "..");
    
                 //for example
                 //the dir is     F:/git 
                 //the file is    F:/git/a/b/1.zip
-                //add            F:/git/a
+                //add folder           F:/git/a
                 let counter = 0;
                 while(!isDirectParent(dir, itsParent)){
                     itsParent = path.resolve(itsParent, "..");
                     counter++;
 
-                    if(counter > 200){
-                        throw "[lsdir] while loop"
-                    }
+                    //assert
+                    if(counter > 200){ throw "[lsdir] while loop" }
                 }
                 dirs.push(itsParent);
-                return;
-            }
-
-            const ext = path.extname(pp).toLowerCase();
-            if (isDisplayableInExplorer(ext)){
+            }else{
                 files.push(pp);
-                infos[pp] = singleInfo;
+                infos[pp] = db.fileToInfo[pp]
             }
         }
     })
@@ -670,16 +691,20 @@ function searchByTagAndAuthor(tag, author, text, onlyNeedFew) {
     // let beg = (new Date).getTime()
     const files = [];
     const fileInfos = {};
-    for (let ii = 0; ii < db.allFiles.length; ii++) {
-        const path = db.allFiles[ii];
+    let _break;
+    getAllFilePathes().forEach(path => {
+        if(_break){
+            return;
+        }
+
         const info = db.fileToInfo[path];
-        const result = (author || tag) && nameParser.parse(path);
+        const result = (author || tag) && parse(path);
         //sometimes there are mulitple authors for one book
         if (result && author &&  
             (isEqual(result.author, author) || isEqual(result.group, author) || isSimilar(result.author, author))) {
             files.push(path);
             fileInfos[path] = info;
-        } else if (result && tag && result.tags.indexOf(tag) > -1) {
+        } else if (result && tag && includesWithoutCase(result.tags, tag)) {
             files.push(path);
             fileInfos[path] = info;
         }else if (text && path.toLowerCase().indexOf(text.toLowerCase()) > -1) {
@@ -688,35 +713,34 @@ function searchByTagAndAuthor(tag, author, text, onlyNeedFew) {
         }
 
         if (onlyNeedFew && files.length > 5) {
-            break;
+            _break = true;
         }
-    }
-
+    });
+   
     // let end = (new Date).getTime();
     // console.log((end - beg)/1000, "to search");
-    return { files, tag, author, fileInfos, thumbnails: getThumbnails(files) };
+    return { files, tag, author, fileInfos, thumbnails: getThumbnails(files), zipInfo: getZipInfo(files) };
 }
 
 // three para 1.hash 2.mode 3.text
 app.post(Constant.SEARCH_API, (req, res) => {
     const mode = req.body && req.body.mode;
-    const hashTag =  db.hashTable[(req.body && req.body.hash)];
+    const textParam = req.body && req.body.text;
+    const hashTag =  db.hashTable[(req.body && req.body.hash)] || textParam;
     const { MODE_TAG,
             MODE_AUTHOR,
             MODE_SEARCH
             } = Constant;
 
-
     const tag =  mode === MODE_TAG && hashTag;
     const author =  mode === MODE_AUTHOR && hashTag;
-    const text = mode === MODE_SEARCH && req.body && req.body.text;
+    const text = mode === MODE_SEARCH && textParam;
 
     if (!author && !tag && !text) {
         res.sendStatus(404);
-        return;
+    }else{
+        res.send(searchByTagAndAuthor(tag, author, text));
     }
-
-    res.send(searchByTagAndAuthor(tag, author, text));
 });
 
 //-----------------thumbnail related-----------------------------------
@@ -730,7 +754,7 @@ app.post(Constant.TAG_THUMBNAIL_PATH_API, (req, res) => {
     }
 
     const { files } = searchByTagAndAuthor(tag, author, null, true);
-    chosendFileName = serverUtil.chooseOneZipForOneTag(files);
+    chosendFileName = serverUtil.chooseOneZipForOneTag(files, db.fileToInfo);
     if(!chosendFileName){
         res.sendStatus(404);
         return;
@@ -785,19 +809,25 @@ function get7zipOption(filePath, outputPath, file_specifier){
 }
 
 async function listZipContent(filePath){
-    //https://superuser.com/questions/1020232/list-zip-files-contents-using-7zip-command-line-with-non-verbose-machine-friend
-    let {stdout, stderr} = await limit(() => execa(sevenZip, ['l', '-r', '-ba' ,'-slt', filePath]));
-    const text = stdout;
-    if (!text || stderr) {
+    try{
+        //https://superuser.com/questions/1020232/list-zip-files-contents-using-7zip-command-line-with-non-verbose-machine-friend
+        let {stdout, stderr} = await limit(() => execa(sevenZip, ['l', '-r', '-ba' ,'-slt', filePath]));
+        const text = stdout;
+        if (!text || stderr) {
+            return [];
+        }
+
+        const files = read7zOutput(text);
+        const imgFiles = files.filter(isImage);
+        const musicFiles = files.filter(isMusic)
+
+        updateZipDb(filePath, imgFiles.length, musicFiles.length);
+        return files;
+    }catch(e){
+        logger.error("[listZipContent]", filePath, e);
+        console.error("[listZipContent]", filePath, e);
         return [];
     }
-
-    const files = read7zOutput(text);
-    const imgFiles = files.filter(isImage);
-    const musicFiles = files.filter(isMusic)
-
-    updateZipDb(filePath, imgFiles.length, musicFiles.length);
-    return files;
 }
 
 function updateZipDb(filePath, pageNum, musicNum){
@@ -820,7 +850,7 @@ async function extractThumbnailFromZip(filePath, res, mode, counter) {
 
     const isPregenerateMode = mode === "pre-generate";
     const sendable = !isPregenerateMode && res;
-    const outputPath = getOutputPath(cachePath, filePath);
+    const outputPath = getCacheOutputPath(cachePath, filePath);
     let files;
  
     function sendImage(img){
@@ -833,8 +863,6 @@ async function extractThumbnailFromZip(filePath, res, mode, counter) {
             url: fullPathToUrl(img)
         })
     }
-
-
 
     function handleFail(){
         sendable && res.sendStatus(404);
@@ -874,7 +902,7 @@ async function extractThumbnailFromZip(filePath, res, mode, counter) {
         } 
         const one = serverUtil.chooseThumbnailImage(files);
         if(!one){
-            console.error("[extractThumbnailFromZip] no thumbnail for ", filePath);
+            // console.error("[extractThumbnailFromZip] no thumbnail for ", filePath);
             handleFail();
             return;
         }
@@ -904,7 +932,7 @@ async function extractThumbnailFromZip(filePath, res, mode, counter) {
 
             if(isPregenerateMode){
                 counter.counter++;
-                logForPre("[pre-generate extract]", counter.counter, counter.total);
+                // logForPre("[pre-generate extract]", counter.counter, counter.total);
             }
         } else {
             console.error("[extractThumbnailFromZip extract exec failed]", code);
@@ -927,14 +955,14 @@ app.post('/api/pregenerateThumbnails', (req, res) => {
         return;
     }
 
-    let totalFiles = db.allFiles.filter(isCompress);
+    const allfiles = getAllFilePathes();
+    let totalFiles = allfiles.filter(isCompress);
     if(path !== "All_Pathes"){
-        totalFiles = db.allFiles.filter(e => e.includes(path));
+        totalFiles = allfiles.filter(e => e.includes(path));
     }
 
     pregenBeginTime = getCurrentTime();
 
-    // const totalFiles = !path ? db.allFiles : db.allFiles.filter(e => e.includes(path));
     let counter = {counter: 1, total: totalFiles.length, minCounter: 1};
     totalFiles.forEach(filePath =>{
         extractThumbnailFromZip(filePath, res, "pre-generate", counter);
@@ -959,11 +987,28 @@ async function extractAll(filePath, outputPath, files, sendBack, res, stat){
     if (!stderr) {
         sendBack && fs.readdir(outputPath, (error, pathes) => {
             const temp = generateContentUrl(pathes, outputPath);
-            sendBack(temp.files, temp.dirs, temp.musicFiles, filePath, stat);
+            sendBack(temp.files, temp.musicFiles, filePath, stat);
         });
     } else {
         res && res.sendStatus(500);
         console.error('[extractAll] exit: ', stderr);
+    }
+}
+
+async function extractByRange(filePath, outputPath, range){
+    try{
+        //let quitely unzip second part
+        //todo: need to cut into parts
+        //when range is too large, will cause error
+        const opt = get7zipOption(filePath, outputPath, range);
+        const { stderr } = await execa(sevenZip, opt);
+        if(stderr){
+            console.error('[extractByRange] second range exit: ', stderr);  
+            logger.error('[extractByRange] second range exit: ', e);
+        }
+    }catch (e){
+        console.error('[extractByRange] second range exit: ', e);
+        logger.error('[extractByRange] second range exit: ', e);
     }
 }
 
@@ -984,7 +1029,7 @@ app.post('/api/extract', async (req, res) => {
         //maybe the file move to other location
         const baseName = path.basename(filePath);
         //todo loop is slow
-        const isSomewhere = db.allFiles.some(e => {
+        const isSomewhere = getAllFilePathes().some(e => {
             if(e.endsWith(baseName)){
                 filePath = e;
                 return true;
@@ -1000,18 +1045,29 @@ app.post('/api/extract', async (req, res) => {
     const time1 = getCurrentTime();
     const stat = await pfs.stat(filePath);
 
-    function sendBack(files, dirs, musicFiles, path, stat){
+    function sendBack(files, musicFiles, path, stat){
         const tempFiles =  serverUtil.filterHiddenFile(files);
-        res.send({ files: tempFiles, dirs, musicFiles,path, stat });
+        res.send({ files: tempFiles, musicFiles,path, stat });
     }
 
-    const outputPath = getOutputPath(cachePath, filePath);
+    const outputPath = getCacheOutputPath(cachePath, filePath);
     const temp = getCacheFiles(outputPath);
-    //TODO: should use pageNum
-    const total_page_num = 15;
-    if (temp && temp.files.length > total_page_num) {
-        sendBack(temp.files, temp.dirs, temp.musicFiles, filePath, stat);
-        return;
+
+    const contentInfo = zip_content_db.getData("/");
+    if(contentInfo[filePath] && temp ){
+        const pageNum = getPageNum(contentInfo, filePath); 
+        const musicNum = getMusicNum(contentInfo, filePath);
+        const totalNum = pageNum + musicNum;
+        const _files = (temp.files||[]).filter(e => {
+            return !util.isCompressedThumbnail(e);
+        });
+
+        if (totalNum > 0 &&  _files.length >= totalNum) {
+            sendBack(temp.files, temp.musicFiles, filePath, stat);
+            return;
+        }else if(totalNum === 0){
+            sendBack([], [], filePath, stat );
+        }
     }
 
     (async () => {
@@ -1051,21 +1107,12 @@ app.post('/api/extract', async (req, res) => {
 
                 if (!stderr) {
                     const temp = generateContentUrl(files, outputPath);
-                    sendBack(temp.files, temp.dirs, temp.musicFiles, filePath, stat);
+                    sendBack(temp.files, temp.musicFiles, filePath, stat);
                     const time2 = getCurrentTime();
                     const timeUsed = (time2 - time1);
                     console.log(`[/api/extract] FIRST PART UNZIP ${filePath} : ${timeUsed}ms`);
 
-                    //let quitely unzip second part
-                    const opt = get7zipOption(filePath, outputPath, secondRange);
-                    const { stderr2 } = await execa(sevenZip, opt);
-                    if(stderr2){
-                        console.error('[/api/extract] second range exit: ', stderr2);  
-                    }else{
-                        const time3 = getCurrentTime();
-                        const timeUsed = (time3 - time2);
-                        console.log(`[/api/extract] Second PART UNZIP ${filePath} : ${timeUsed}ms`);
-                    }
+                    extractByRange(filePath, outputPath, secondRange)
                 } else {
                     res.sendStatus(500);
                     console.error('[/api/extract] exit: ', stderr);
@@ -1093,8 +1140,8 @@ function doCacheClean(config){
 app.post('/api/cleanCache', (req, res) => {
     const minized = req.body && req.body.minized;
 
-    const allowFileNames =  db.allFiles.map(filePath => {
-        let outputPath = getOutputPath(cachePath, filePath);
+    const allowFileNames =  getAllFilePathes().map(filePath => {
+        let outputPath = getCacheOutputPath(cachePath, filePath);
         outputPath = path.basename(outputPath);
         return outputPath;
     })

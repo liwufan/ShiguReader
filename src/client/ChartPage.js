@@ -9,21 +9,47 @@ import CenterSpinner from './subcomponent/CenterSpinner';
 import ErrorPage from './ErrorPage';
 import {Bar, Pie, Line} from 'react-chartjs-2';
 const clientUtil = require("./clientUtil");
-const { getDir, getFn } = clientUtil;
+const {  getBaseName } = clientUtil;
 const util = require("../util");
 const {isCompress, array_unique} = util;
+import RadioButtonGroup from './subcomponent/RadioButtonGroup';
+import { isVideo } from '../util';
+import Accordion from './subcomponent/Accordion';
 
+function parse(str){
+    return nameParser.parse(getBaseName(str));
+}
+
+function renderTable(labels, values){
+    const tableHeader = (<thead><tr>
+        <th scope="col">name</th>
+        <th scope="col">number</th>
+        </tr></thead>);
+
+        const rows = labels.map((e, index) => {
+            return (<tr key={index}><th scope="row">{e}</th><td>{values[index]}</td></tr>);
+        });
+
+    return (
+        <table className="table aji-table">
+            {tableHeader}
+            <tbody>
+                {rows}
+            </tbody>
+        </table>
+    );
+}
 
 export default class ChartPage extends Component {
     constructor(prop) {
         super(prop);
         this.failedTimes = 0;
-        this.state = {};
+        this.state = {fileType: "compressed"};
     }
 
     componentDidMount() {
         if(this.failedTimes < 3) {
-            Sender.get("/api/allInfo", res => {
+            Sender.post("/api/allInfo", {}, res => {
                 this.handleRes(res);
             });
 
@@ -52,11 +78,40 @@ export default class ChartPage extends Component {
         return this.res && this.res.failed;
     }
 
+    getHash() {
+        return this.props.match.params.number;
+    }
+
+    getPathFromLocalStorage(){
+        const hash = this.getHash();
+        return clientUtil.getPathFromLocalStorage(hash) || "";
+    }
+
+    getFilterFiles(){
+        const func =  this.isShowingVideoChart()? isVideo : isCompress;
+        const fp = this.getPathFromLocalStorage();
+        const result = (this.files || []).filter(e => {
+            if(fp && !e.startsWith(fp)){
+                return false;
+            }
+            return func(e);
+        });
+        return result;
+    }
+
+    isShowingVideoChart(){
+        return this.state.fileType === "video";
+    }
+
     renderComiketChart(){
+        if(this.isShowingVideoChart()){
+            return;
+        }
+
         const byComiket = {}; //c91 -> 350
         const tagByComiket = {}; // c95 -> kankore -> 201
-        this.files.forEach(e => {
-            const result = nameParser.parse(getFn(e));
+        this.getFilterFiles().forEach(e => {
+            const result = parse(e);
             if(result && result.comiket){
                 let cc = result.comiket;
                 byComiket[cc] = byComiket[cc] || 0;
@@ -72,57 +127,57 @@ export default class ChartPage extends Component {
             }
         })
 
-        const data = {};
-        data.labels = nameParser.ALL_COMIC_TAGS;
-        const value = [];
-        nameParser.ALL_COMIC_TAGS.forEach(e => {
-            value.push(byComiket[e]);
-        })
+        let labels = nameParser.ALL_COMIC_TAGS.slice();
+        let values = [];
+        labels.forEach((e, index )=> {
+            const vv = byComiket[e]; 
+            values.push(vv);
 
+            if(!vv){
+                labels[index] = undefined;
+            }
+        });
+
+        labels = labels.filter(e => !!e);
+        values = values.filter(e => !!e);
+
+        const data = {};
+        data.labels = labels;
         data.datasets = [{
             type: 'bar',
             label: 'by comiket',
             backgroundColor: "#15c69a",
-            data:  value
+            data:  values
           }]
-
-        // console.log(tagByComiket);
-        // console.table(tagByComiket);
 
         const opt = {
             maintainAspectRatio: false,
             legend: {
                 position: "right"
             }
-            // scales: {
-            //   xAxes: [{
-            //     stacked: true
-            //   }],
-            //   yAxes: [{
-            //     stacked: true
-            //   }]
-            // }
-          };
+        };
 
         //add big tag
-
         return (
             <div className="individual-chart-container">
-              <Bar
-                data={data}
-                width={800}
-                height={200}
-                options={opt}
-              />
+                <div>
+                <Bar
+                    data={data}
+                    width={800}
+                    height={200}
+                    options={opt}
+                />
+                </div>
+                <Accordion header="toggle chart"  body={renderTable(labels, values)} />
             </div>
           );
     }
 
     rendeTimeChart(){
         const byTime = {}; //time -> 300. 
-        this.files.forEach(e => {
+        this.getFilterFiles().forEach(e => {
             const fileInfo = this.fileToInfo[e];
-            const pA = nameParser.parse(getFn(e));
+            const pA = parse(e);
             let aboutTimeA = pA && nameParser.getDateFromTags(pA.tags);
             aboutTimeA = aboutTimeA && aboutTimeA.getTime();
             aboutTimeA = aboutTimeA || fileInfo.mtime;
@@ -166,9 +221,13 @@ export default class ChartPage extends Component {
     }
 
     renderPieChart(){
+        if(this.isShowingVideoChart()){
+            return;
+        }
+
         const byType = {}; //doujin -> 300. 
-        this.files.forEach(e => {
-            const result = nameParser.parse(getFn(e));
+        this.getFilterFiles().forEach(e => {
+            const result = parse(e);
             if(result &&  result.type){
                 const type = result.type;
                 byType[type] = byType[type] || 0;
@@ -206,24 +265,25 @@ export default class ChartPage extends Component {
 
     }
 
-    getTotalSize(){
+    renderTotalSize(){
         let total = 0;
-        let num = 0;
-        this.files.forEach(e => {
-            if(isCompress(e)){
-                total += this.fileToInfo[e].size;
-                num++;
-            }
+        const files = this.getFilterFiles();
+        const num = files.length;
+        files.forEach(e => {
+           total += this.fileToInfo[e].size;
         })
         return (<div className="total-info"> 
-                     <div>{`There are ${num} files`}</div>
+                     <div>{`There are ${num} ${this.state.fileType} files`}</div>
                      <div>{`Total: ${filesizeUitl(total, {base: 2})}`}</div>
                 </div>)
     }
 
     renderGoodBadDistribution(){
-        const {goodAuthors, otherAuthors} = this.state;
+        if(this.isShowingVideoChart()){
+            return;
+        }
 
+        const {goodAuthors, otherAuthors} = this.state;
         const data = {
             labels : []
         };
@@ -258,7 +318,7 @@ export default class ChartPage extends Component {
 
             data.labels = data.labels.slice(1);
             value = value.slice(1);
-            console.log(value);
+            // console.log(value);
 
             const opt = {
                 maintainAspectRatio: false,
@@ -287,21 +347,52 @@ export default class ChartPage extends Component {
               );
         }
     }
+    
+    onFileTypeChange(e){
+        this.setState({
+            fileType: e
+        });
+    }
 
     render(){
         document.title = "Chart"
+        const too_few = 30;
+
+        const FILE_OPTIONS = [
+          "video",
+          "compressed"
+        ];
+
+        const files = this.getFilterFiles();
+        const {fileType} = this.state;
+
+        const filePath = <div>{this.getPathFromLocalStorage() }</div>; 
+
+        const radioGroup = <RadioButtonGroup 
+                            className="chart-radio-button-group"
+                            checked={FILE_OPTIONS.indexOf(this.state.fileType)} 
+                            options={FILE_OPTIONS} 
+                            onChange={this.onFileTypeChange.bind(this)}/>
 
         if (!this.res) {
             return (<CenterSpinner/>);
         } else if(this.isFailedLoading()) {
             return <ErrorPage res={this.res.res}/>;
-        } else if(this.files.length <100){
-            return (<div>Too few file </div>)
-        }else{
-            
+        } else if(files.length < too_few){
+            return ( <div className="chart-container container">
+                        {filePath}
+                        {radioGroup}
+                        <div className="alert alert-info" role="alert" > 
+                             <div>{`There are only ${files.length} ${fileType} files.`} </div> 
+                             <div>Unable to render chart</div>
+                        </div>
+                    </div>);
+        }else{ 
             return (
                 <div className="chart-container container">
-                    {this.getTotalSize()}
+                    {filePath}
+                    {radioGroup}
+                    {this.renderTotalSize()}
                     {this.rendeTimeChart()}
                     {this.renderComiketChart()}
                     {this.renderPieChart()}

@@ -62,12 +62,25 @@ git clone https://github.com/hjyssg/ShiguReader
 # cd F:\ShiguReader
 
 # 安装依赖
-# 最近gitub可能被墙， 所以用taobao的源。
-# install会比较慢，要耐心
+# 如果人在墙外，只需要
+npm install 
+
+# 否则因为有依赖包要从github下载，可能会卡住。
+# 给出以下几种尝试方式。
+# 第1种 指定--registry
 npm install --registry=http://registry.npm.taobao.org
 
-# install中途要是node-sass报错
-# 看一下issue页面。有解决办法
+# 第2种 使用cnpm
+npm install -g cnpm --registry=https://registry.npm.taobao.org
+#cmd输入以上命令就可以了，然后输入
+cnpm install 
+
+# 第3种 设置registry
+npm config set registry https://registry.npm.taobao.org
+# 后续的install等命令还是通过npm运作
+
+# 安装成功会显示类似
+# added 100 package from 100 contributor in 200s
 
 # 重要：*nix以及Mac用户，需要自己用命令行安装7zip。并添加到cmd的path上。
 
@@ -83,7 +96,7 @@ npm run dev
 
 # 如果用了一段时间，缓存占了太多空间。
 # 手动去到admin页面点clean cache清除缓存。
-# 不要在文件夹直接删掉整个缓存文件夹，程序可能会出问题。
+# 尽量不要在文件夹直接删掉整个缓存文件夹，那样之前生成的缩略图就全部没了。
 ```
 
 ###### English
@@ -106,6 +119,8 @@ cd ShiguReader
 
 # Install dependencies
 npm install
+
+# for *nix people, please install 7zip on your own
 
 # Start development server
 npm run dev
@@ -145,8 +160,8 @@ docker run -d -p hostport:3000 -v comicpath:/data liwufan/shigureader
 # comicpath 是要扫描的文件目录
 ```
 ##### 注意事项
-当src/user-config.js的module.exports.readable_cache_folder_name = true的时候
-你可能需要如下设置。但有s1坛友反映会导致其他非unicode软件乱码。
+如果部分文件名带汉字日语假名的图片加载不出来，你可能需要如下语言设置。
+但有s1坛友反映会导致其他非unicode软件乱码。
 
 windows语言设置:
 ![unicode setting](screenshot/unicode-setting.png)
@@ -154,6 +169,20 @@ windows语言设置:
 ##### 安全性
 ShiguReader的使用场景是LAN(局域网)，开放到外网非常不安全。
 而且功能和性能也是纯粹为家庭用户使用设计的。
+
+##### DOCKER 使用方法
+```
+docker pull liwufan/shigureader
+docker run -d -p hostport:3000 -v comicpath:/data liwufan/shigureader
+
+# hostport 是主机要开放的端口
+# comicpath 是要扫描的文件目录
+```
+
+
+
+有问题阅读 ![docker配置说明](https://github.com/hjyssg/ShiguReader/blob/dev/dockerguide.md)
+
 
 ##### 和tamper monkey一起使用
     把EhentaiHighighliger.js添加到tamper monkey。
@@ -168,7 +197,11 @@ ShiguReader的使用场景是LAN(局域网)，开放到外网非常不安全。
          如果没用git，重新走一遍全部流程。  
 
     问： 默认的端口被占用了，怎么办？
-    答： 改port-config.js
+    答:  1.看是不是重复启进程了。  
+         2.别的软件已经把端口占了的话，改port-config.js。
+    
+    问：怎么关闭服务器？
+    答：cmd上ctrl+c就好了。
 
 ##### 热键
 漫画页面  

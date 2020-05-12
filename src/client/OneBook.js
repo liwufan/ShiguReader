@@ -25,12 +25,13 @@ const Constant = require("../constant");
 
 import Cookie from "js-cookie";
 import { isLocalHost } from './clientUtil';
+import { array_unique } from '../util';
 
 const MIN_HEIGHT = 400;
 const MIN_WIDTH = 400;
 const userConfig = require('../user-config');
 const clientUtil = require("./clientUtil");
-const { getDir, getFn, isPad, stringHash, getUrl, sortFileNames, cleanSearchStr } = clientUtil;
+const { getDir, getBaseName, isPad, stringHash, getUrl, sortFileNames, cleanSearchStr } = clientUtil;
 
 const NO_TWO_PAGE = "no_clip";
 const TWO_PAGE_LEFT = "left";
@@ -45,7 +46,6 @@ export default class OneBook extends Component {
       index: this.getInitIndex(),
       twoPageMode: NO_TWO_PAGE
     };
-    this.failTimes = 0;
   }
 
   getInitIndex(){
@@ -63,7 +63,7 @@ export default class OneBook extends Component {
   
   componentDidMount() {
     const fileHash = this.getHash();
-    if(fileHash && this.loadedHash !== fileHash && this.failTimes < 3){
+    if(fileHash && this.loadedHash !== fileHash ){
       this.displayFile(fileHash);
     }
 
@@ -76,10 +76,6 @@ export default class OneBook extends Component {
     window.addEventListener("resize", this.adjustImageSizeAfterResize.bind(this));
   }
   
-  componentDidUpdate() {
-    this.componentDidMount();
-  }
-
   updateScrollPos(e) {
     // $('html').css('cursor', 'row-resize');
     // console.log(this.clickY, e.pageY, this.clickY - e.pageY );
@@ -249,6 +245,10 @@ export default class OneBook extends Component {
     }
 
     const imageDom = ReactDOM.findDOMNode(this.wrapperRef);
+    if(!imageDom){
+      return;
+    }
+
     this.imgDomHeight = imageDom.clientHeight;
     imageDom.addEventListener("wheel", this.onwheel.bind(this), {passive: false} );
 
@@ -288,20 +288,19 @@ export default class OneBook extends Component {
         sortFileNames(files);
         let musicFiles = res.musicFiles || [];
         sortFileNames(musicFiles);
-        this.setState({ files, musicFiles, path:res.path, fileStat: res.stat });
-
+        this.setState({ files, musicFiles, path:res.path, fileStat: res.stat}, 
+                       () => { this.bindUserInteraction()});
+        //used by recent read in admin page
         Cookie.set(util.getCurrentTime(), this.loadedHash, { expires: 7 })
 
-        this.bindUserInteraction();
       }else{
-        this.failTimes++;
         this.forceUpdate();
       }
     });
   }
   
   componentWillUnmount() {
-    document && document.removeEventListener("keydown", this.handleKeyDown.bind(this));
+    document.removeEventListener("keydown", this.handleKeyDown.bind(this));
     window && window.removeEventListener("resize", this.adjustImageSizeAfterResize.bind(this));
   }
   
@@ -397,7 +396,7 @@ export default class OneBook extends Component {
       const size = filesizeUitl(fileStat.size, {base: 2});
       const avg = filesizeUitl(fileStat.size/files.length, {base: 2});
       const mTime = dateFormat(fileStat.mtime, "isoDate");
-      const title = getFn(files[index], "/" );
+      const title = getBaseName(files[index], "/" );
       const dim = "";  //change by dom operation
       const titles = [
         "Modify Time",
@@ -545,26 +544,45 @@ export default class OneBook extends Component {
   }
 
   renderTags(){
-    const result = nameParser.parse(getFn(this.state.path));
-    const author = result && result.author;
-    const group = result && result.group;
-    let tags = (result && result.tags)||[];
-    if(author && group && group !== author){
-      tags = tags.concat(group);
+    const fn = getBaseName(this.state.path);
+    const dirName = getBaseName(getDir(this.state.path));
+    const result = nameParser.parse(fn);
+    let tagDivs;
+    let tags;
+    let author;
+    let originalTags;
+    let group;
+
+    if(result){
+      author =  result.author;
+      group = result.group;
+      originalTags = result.tags||[];
+      tags = originalTags;
+      if(author && group && group !== author){
+        tags = tags.concat(group);
+      }
+      if(author){
+        tags = tags.concat(author);
+      }
     }
-    if(author){
-      tags = tags.concat(author);
+
+    if(fn.includes(dirName)){
+      tags = tags || [];
+      tags.push(dirName);
     }
-    
-    const tagDivs = tags.map((tag)=>{
+
+    tags = tags || [];
+    tags = array_unique(tags);
+
+    tagDivs = tags.map( tag => {
       const tagHash = stringHash(tag);
       let url;
       if(tag === author){
         url = "/author/" + tagHash;
-      }else if(tag === group){
-        url = "/search/" + cleanSearchStr(tag);
-      }else{
+      }else if(originalTags && originalTags.includes(tag)){
         url = "/tag/" + tagHash;
+      }else{
+        url = "/search/" + cleanSearchStr(tag);
       }
       
       url += "#sortOrder=" + Constant.SORT_BY_FOLDER;
@@ -618,26 +636,38 @@ export default class OneBook extends Component {
   render() {
     if (this.isFailedLoading()) { 
       let userText;
-      if(this.res.res.status === 404){
-        userText = `Does not find ${this.getPathFromLocalStorage()}.`;
-      } else if (this.res.res.status === 500){
-        userText = `${this.getPathFromLocalStorage()} is a broken file`;
+      const fp = this.getPathFromLocalStorage();
+      if(fp){
+        if(this.res.res.status === 404){
+          userText = `Does not find ${fp}.`;
+        } else if (this.res.res.status === 500){
+          userText = `${fp} is a broken file`;
+        }
       }
-
       return <ErrorPage res={this.res.res} userText={userText}/>;
     }
     
     const { files, index } = this.state;
+    const bookTitle = (<div className="one-book-title" >
+                          <ClickAndCopyText text={getBaseName(this.state.path)} />
+                          {this.renderPath()} 
+                      </div>);
+
     if (_.isEmpty(files)) {
       if(this.res && !this.refs.failed){
-        return <h3><center>no content files</center></h3>;
+        return (<h3>
+                  <center style={{paddingTop: "200px"}}> 
+                    <div className="alert alert-warning col-6" role="alert" > No image or music file </div>
+                    {bookTitle}
+                  </center>
+                </h3>);
       } else {
         return (<CenterSpinner text={this.getPathFromLocalStorage()} splitFilePath/>);
       } 
     }
     
     if(this.state.path){
-      document.title = getFn(this.state.path);
+      document.title = getBaseName(this.state.path);
 
       if(isPad() && index > 0){
         const _text = `${index+1}/${files.length}`;
@@ -661,10 +691,7 @@ export default class OneBook extends Component {
     return (  
       <div className="one-book-container">
         {!isContentBelow && content}
-        <div className="one-book-title" >
-            {this.renderPath()} 
-            <ClickAndCopyText text={getFn(this.state.path)} />
-        </div>
+        {bookTitle}
         {this.renderPagination()}
         {this.renderFileSizeAndTime()}
         {this.renderTags()}

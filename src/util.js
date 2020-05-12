@@ -3,7 +3,7 @@
 //https://stackoverflow.com/questions/11852589/what-image-formats-do-the-major-browsers-support-2012
 const imageTypes = [".jpg", ".png", ".jpeg", ".gif", ".bmp", ".webp"];
 const compressTypes = [".zip", ".rar", ".7zip", ".7z"];
-const musicTypes = [".mp3", ".wav"];
+const musicTypes = [".mp3", ".wav", ".m4a", ".wma", ".flac", ".ogg", ".m4p", ".m4a", ".aiff"];
 const videoTypes = [".mp4", ".3gp", ".avi", ".mov", 
                     ".mp4", ".m4v", ".m4a", ".mkv",  ".webm" ];
 
@@ -42,15 +42,15 @@ module.exports.canBeCompressed = function(fn){
 }
 
 //todo duplicate----------
- module.exports._sortFileNames = function (files, getFnWithoutExtention) {
-    if(!getFnWithoutExtention){
-        throw "no getFnWithoutExtention";
+ module.exports._sortFileNames = function (files, getBaseNameWithoutExtention) {
+    if(!getBaseNameWithoutExtention){
+        throw "no getBaseNameWithoutExtention";
     }
 
-    const fileIndexs =  files.map(e => getFnWithoutExtention(e));
+    const fileIndexs =  files.map(e => getBaseNameWithoutExtention(e));
 
     if(fileIndexs.every(isOnlyDigit)){
-      files.sort((a, b) =>  {return parseInt(getFnWithoutExtention(a)) - parseInt(getFnWithoutExtention(b)) });
+      files.sort((a, b) =>  {return parseInt(getBaseNameWithoutExtention(a)) - parseInt(getBaseNameWithoutExtention(b)) });
     } else {
       files.sort((a, b) => a.localeCompare(b));
     }
@@ -87,8 +87,6 @@ module.exports.arraySlice = function(arr, beg, end){
     }
     return result;
 }
-
-
 
 module.exports.getCurrentTime = function(){
     return new Date().getTime();

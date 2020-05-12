@@ -10,15 +10,13 @@ import ErrorPage from './ErrorPage';
 import CenterSpinner from './subcomponent/CenterSpinner';
 import Pagination from 'rc-pagination';
 import { Redirect } from 'react-router-dom';
+import { isCompress, isImage } from '../util';
 const nameParser = require('../name-parser');
 
 const util = require("../util");
 const clientUtil = require("./clientUtil");
-const { getDir, getFn, getPerPageItemNumber, stringHash } = clientUtil;
+const { getDir, getBaseName, getPerPageItemNumber, stringHash } = clientUtil;
 
-const chooseOneThumbnailForOneTag = function(files){
-  return files && files[0];
-}
 
 function addOne(table, key) {
   if(!key){
@@ -45,7 +43,7 @@ function addToArray(table, key, value){
 export default class TagPage extends Component {
   constructor(prop) {
     super(prop);
-    this.state = { tags: [], sortByNumber: true };
+    this.state = { tags: [], sortByNumber: true, pageIndex: 1 };
     this.perPage = getPerPageItemNumber();
   }
 
@@ -58,7 +56,9 @@ export default class TagPage extends Component {
       return;
     }
 
-    Sender.get('/api/allInfo', res => {
+    this.bindUserInteraction();
+
+    Sender.post('/api/allInfo', { needThumbnail: true}, res => {
       if (!res.failed) {
         this.setItems(res);
         this.setState({ loaded: true });
@@ -68,24 +68,60 @@ export default class TagPage extends Component {
       }
     });
   }
+
+  bindUserInteraction(){
+      document.addEventListener('keydown', this.handleKeyDown.bind(this));
+  }
+
+  componentWillUnmount(){
+      document.removeEventListener("keydown", this.handleKeyDown.bind(this));
+  }
+
+  handleKeyDown(event) {
+    const key = event.key.toLowerCase();
+    if (key === "arrowright" || key === "d" || key === "l") {
+      this.next();
+      event.preventDefault();
+    } else if (key === "arrowleft" || key === "a" || key === "j") {
+      this.prev();
+      event.preventDefault();
+    }
+  }
+
+  chooseOneThumbnailForOneTag = function(files){
+    nameParser.sort_file_by_time(files, this.fileToInfo, getBaseName, false, false);
+
+    let result;
+    files.some(e => {
+      const thumbnail = this.allThumbnails[e];
+      if(thumbnail && isImage(thumbnail)){
+        result = thumbnail;
+        return true;
+      }
+    });
+
+    return result;
+  }
   
   setItems(res){
-    const { allFiles = [], allThumbnails = {} } = res;
+    const { fileToInfo = {}, allThumbnails = {} } = res;
     const tags = {};
     const authors = {};
     const authorToFiles = {};
     const tagToFiles = {};
+    const allFiles = _.keys(fileToInfo).filter(isCompress);
+    this.fileToInfo = fileToInfo;
+    this.allThumbnails = allThumbnails;
 
     allFiles.forEach((filePath) => {
-        const fileName = getFn(filePath);
+        const fileName = getBaseName(filePath);
         const result = nameParser.parse(fileName);
         if (result) {
-            const fileThumbnail = allThumbnails[filePath];
             addOne(authors, result.author);
-            addToArray(authorToFiles, result.author, fileThumbnail );
+            addToArray(authorToFiles, result.author, filePath );
             result.tags.forEach(tag => {
               addOne(tags, tag);
-              addToArray(tagToFiles, tag, fileThumbnail);
+              addToArray(tagToFiles, tag, filePath);
             });
         }
     });
@@ -102,10 +138,6 @@ export default class TagPage extends Component {
     return this.isAuthorMode()? this.state.authors : this.state.tags;
   }
 
-  getThumbnails(){
-    return this.isAuthorMode()? this.state.authorToFiles : this.state.tagToFiles;
-  }
-
   getItemLength(){
     return _.keys(this.getItems()).length
   }
@@ -117,17 +149,25 @@ export default class TagPage extends Component {
   renderTagList() {
     const {
       tags = [],
-      authors = []
+      authors = [],
+      loaded,
+      authorToFiles,
+      tagToFiles
     } = this.state;
 
-    if (_.isEmpty(tags) && _.isEmpty(authors)) {
-      return (<CenterSpinner/>);
+    if ( _.isEmpty(tags) && _.isEmpty(authors)) {
+      if(loaded){
+        return (<center style={{paddingTop: "100px"}}> 
+                    <div className="alert alert-info col-6" role="alert" > {`No Content`} </div>
+                </center>);
+      }else{
+        return (<CenterSpinner/>);
+      }
     }
 
     const items = this.getItems();
     let keys = _.keys(items);
 
-    const tagToThumbnail = this.getThumbnails();
 
     if(this.state.sortByNumber){
       keys.sort((a, b) => items[b] - items[a]);
@@ -142,12 +182,14 @@ export default class TagPage extends Component {
     }
 
     keys = keys.slice((this.pageIndex-1) * this.perPage, this.pageIndex * this.perPage);
+    const t2Files = this.isAuthorMode()? authorToFiles : tagToFiles;
 
     const tagItems = keys.map((tag) => {
       const itemText = `${tag} (${items[tag]})`;
       const tagHash = stringHash(tag);
+
       const url = this.isAuthorMode()? ("/author/" + tagHash) :  ("/tag/" + tagHash);
-      const thumbnailUrl = chooseOneThumbnailForOneTag(tagToThumbnail[tag]);
+      const thumbnailUrl = this.chooseOneThumbnailForOneTag(t2Files[tag]);
 
       return  (<div key={tag} className="col-sm-6 col-md-4 col-lg-3 tag-page-list-item">
                     <div className={"tag-cell"}>
@@ -187,7 +229,23 @@ export default class TagPage extends Component {
     const temp = this.props.mode === "tag"? "/tagPage/": "/authorPage/";
     const path = temp + index;
     this.redirect = path;
-    this.forceUpdate();
+    this.setState({
+      pageIndex: index
+    });
+  }
+
+  next(){
+    if(this.pagination && this.pagination.hasNext()){
+        let next = this.state.pageIndex+1;
+        this.handlePageChange(next);
+    }
+  }
+
+  prev(){
+      if(this.pagination && this.pagination.hasPrev()){
+          let next = this.state.pageIndex-1;
+          this.handlePageChange(next);
+      }
   }
 
   renderPagination(){
@@ -196,6 +254,7 @@ export default class TagPage extends Component {
     }
 
     return (<Pagination current={this.pageIndex}  
+                        ref={ref => this.pagination = ref}
                         pageSize={this.perPage}
                         total={this.getItemLength()} 
                         showQuickJumper={{goButton: true}}
