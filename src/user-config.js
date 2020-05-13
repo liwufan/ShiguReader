@@ -8,30 +8,14 @@ const now = new Date();
 const y = now.getFullYear();
 let mm = now.getMonth()+1;
 mm = ( mm < 10 ) ? ( "0" + ( mm ).toString() ) : ( mm ).toString();
-const fd = "good_"+ [y, mm, "01"].join("_");
-module.exports.good_folder = "/data/good/"+fd;
 
-/** 
- * OPTIONAL all good folders  
- * 可选 喜欢的漫画的根目录，这个文件夹可以会用来判断你喜欢什么作评
- */
-module.exports.good_folder_root = "/data/good"
-
-
-/**
- * OPTIONAL where to move file
- * 可选 手动漫画整理的时候，你想把不怎么喜欢的漫画移动到的位置
- */
-module.exports.not_good_folder = "/data/bad"+ y;
-
-/**
- * OPTIONAL where to move file
- * 可选 手动漫画整理的时候，你可以移动的其他位置
- */
+const fd =  [y, mm, "01"].join("_");
+module.exports.good_folder = "/data/good/" + fd;
+module.exports.good_folder_root = "/data/good";
+module.exports.not_good_folder = "/data/sort/"+ y;
 module.exports.additional_folder = [
-    "/data/other"
+	"/data/other"
 ];
-
 
 //----------------- below section used by developer-----------------------------
 
