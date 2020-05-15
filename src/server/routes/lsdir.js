@@ -16,10 +16,11 @@ const path = require('path');
 
 const getZipInfo = serverUtil.common.getZipInfo;
 const getThumbnails = serverUtil.common.getThumbnails;
+const _ = require('underscore');
+
 
 router.post('/api/lsDir', async (req, res) => {
-    const hashdir = db.hashTable[(req.body && req.body.hash)];
-    const dir = hashdir|| req.body && req.body.dir;
+    const dir = req.body && req.body.dir;
     const isRecursive = req.body && req.body.isRecursive;
 
     if (!dir || !(await isExist(dir))) {
@@ -60,7 +61,7 @@ router.post('/api/lsDir', async (req, res) => {
         }
     })
 
-    const _dirs = util.array_unique(dirs);
+    const _dirs = _.uniq(dirs);
 
     const time2 = getCurrentTime();
     const timeUsed = (time2 - time1)/1000;

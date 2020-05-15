@@ -11,7 +11,7 @@ import AdminPage from "./AdminPage";
 import { Switch, Route, Link, Redirect } from 'react-router-dom';
 import screenfull from 'screenfull';
 const clientUtil = require("./clientUtil");
-const { cleanSearchStr, getSearchInputText } = clientUtil;
+const { getSearchInputText } = clientUtil;
 
 // http://localhost:3000/
 class App extends Component {
@@ -69,18 +69,17 @@ class App extends Component {
         const result = (
         <Switch>
             <Route exact path='/' render={renderExplorer}/>
-            <Route path='/explorer/:number' render={renderExplorer}/>
-            <Route path='/tag/:tag' render={renderExplorer}/>
-            <Route path='/author/:author' render={renderExplorer}/>
-            <Route path='/search/:search' render={renderExplorer}/>
+            <Route path='/explorer/' render={renderExplorer}/>
+            <Route path='/tag/' render={renderExplorer}/>
+            <Route path='/author/' render={renderExplorer}/>
+            <Route path='/search/' render={renderExplorer}/>
 
-            <Route path='/onebook/:number' render={renderOneBook}/>
+            <Route path='/onebook/' render={renderOneBook}/>
             <Route path='/tagPage/:index' render={renderTagPage}/>
             <Route path='/authorPage/:index' render={renderAuthorPage}/>
-            <Route path='/videoPlayer/:number' render={renderVideo}/>
+            <Route path='/videoPlayer/' render={renderVideo}/>
 
-            <Route path='/chart/:number' render={renderChartPage}/>
-            <Route path='/chart' render={renderChartPage}/>
+            <Route path='/chart/' render={renderChartPage}/>
             <Route path='/admin' render={renderAdminPage}/>
 
         </Switch>
@@ -98,7 +97,7 @@ class App extends Component {
     render() {
         // document.title = this.getWebTitle();
         if(this.searchText){
-            const path = "/search/" + cleanSearchStr(this.searchText);
+            const path = clientUtil.getSearhLink(this.searchText);
             this.searchText = "";
             return (<Redirect
                 to={{

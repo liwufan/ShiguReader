@@ -24,14 +24,12 @@ import screenfull from 'screenfull';
 const Constant = require("../constant");
 
 import Cookie from "js-cookie";
-import { isLocalHost } from './clientUtil';
-import { array_unique } from '../util';
 
 const MIN_HEIGHT = 400;
 const MIN_WIDTH = 400;
 const userConfig = require('../user-config');
 const clientUtil = require("./clientUtil");
-const { getDir, getBaseName, isPad, stringHash, getUrl, sortFileNames, cleanSearchStr } = clientUtil;
+const { getDir, getBaseName, isPad, getFileUrl, sortFileNames } = clientUtil;
 
 const NO_TWO_PAGE = "no_clip";
 const TWO_PAGE_LEFT = "left";
@@ -57,15 +55,13 @@ export default class OneBook extends Component {
     location.hash = queryString.stringify({index});
   }
 
-  getHash(){
-    return this.props.match.params.number;
+  getTextFromQuery(props){
+      const _props = props || this.props;
+      return queryString.parse(_props.location.search)["p"] ||  "";
   }
   
   componentDidMount() {
-    const fileHash = this.getHash();
-    if(fileHash && this.loadedHash !== fileHash ){
-      this.displayFile(fileHash);
-    }
+    this.displayFile();
 
     if(!isPad ()){
       screenfull.onchange(()=> {
@@ -228,7 +224,7 @@ export default class OneBook extends Component {
   rotateImg(newAngle){
     let imageDom = ReactDOM.findDOMNode(this.imgRef);
     if(imageDom){
-      if(typeof newAngle === "number"){ 
+      if(_.isNumber(newAngle)){ 
         this.rotateAngle = newAngle;
       }else{
         this.rotateAngle = (this.rotateAngle||0) + 90;
@@ -271,11 +267,10 @@ export default class OneBook extends Component {
     });
   }
   
-  displayFile(file){
-    Sender.post("/api/extract", {filePath: this.getPathFromLocalStorage(),   hash: this.getHash(), startIndex: this.state.index||0 }, res => {
+  displayFile(){
+    Sender.post("/api/extract", {filePath: this.getTextFromQuery(), startIndex: this.state.index||0 }, res => {
       this.res = res;
       if (!res.failed) {
-        this.loadedHash = this.getHash();
         let files = res.files || [];
         files = files.filter(e => {
           return !util.isCompressedThumbnail(e);
@@ -291,7 +286,7 @@ export default class OneBook extends Component {
         this.setState({ files, musicFiles, path:res.path, fileStat: res.stat}, 
                        () => { this.bindUserInteraction()});
         //used by recent read in admin page
-        Cookie.set(util.getCurrentTime(), this.loadedHash, { expires: 7 })
+        Cookie.set(util.getCurrentTime(), this.getTextFromQuery(), { expires: 7 })
 
       }else{
         this.forceUpdate();
@@ -437,17 +432,17 @@ export default class OneBook extends Component {
         "has-music": this.hasMusic()
       });
 
-      const nextImg = this.shouldTwoPageMode() &&  <img  className={cn} src={getUrl(files[index+1])} alt="book-image"
+      const nextImg = this.shouldTwoPageMode() &&  <img  className={cn} src={getFileUrl(files[index+1])} alt="book-image"
                                           ref={img => this.nextImgRef = img}
                                           onLoad={this.makeTwoImageSameHeight.bind(this)}
                                           index={index+1}
                                         />;
 
-      const preload =  index < files.length-1 &&  <link rel="preload" href={getUrl(files[index+1])} as="image" /> ;
+      const preload =  index < files.length-1 &&  <link rel="preload" href={getFileUrl(files[index+1])} as="image" /> ;
 
       return (<React.Fragment>
               { twoPageMode === TWO_PAGE_RIGHT &&  nextImg }
-              <img  className={cn} src={getUrl(files[index])} alt="book-image"
+              <img  className={cn} src={getFileUrl(files[index])} alt="book-image"
                            ref={img => this.imgRef = img}
                            onLoad={this.adjustImageSize.bind(this)}
                            index={index}
@@ -468,7 +463,7 @@ export default class OneBook extends Component {
                 <img className={cn} 
                   ref={(img) =>  this.imgRef = img}
                   onError={this.onError.bind(this)}
-                  src={getUrl(files[index])}  />
+                  src={getFileUrl(files[index])}  />
                </div>);
       }else{
         images =files.map(file => {
@@ -476,7 +471,7 @@ export default class OneBook extends Component {
                       <LoadingImage className={"mobile-one-book-image"} 
                                bottomOffet={-4000}
                                topOffet={-3000}
-                               url={getUrl(file)} 
+                               url={getFileUrl(file)} 
                                key={file}/> 
                   </div>);
         });
@@ -517,8 +512,7 @@ export default class OneBook extends Component {
     }
 
     const parentPath = getDir(this.state.path);
-    const parentHash = stringHash(parentPath);
-    const toUrl = ('/explorer/'+ parentHash);
+    const toUrl = clientUtil.getExplorerLink(parentPath);
     
     return (
       <div className="one-book-path">
@@ -591,19 +585,18 @@ export default class OneBook extends Component {
     }
 
     tags = tags || [];
-    tags = array_unique(tags);
+    tags = _.uniq(tags);
 
     tagDivs = tags.map( tag => {
-      const tagHash = stringHash(tag);
       let url;
       if(authors && authors.includes(tag)){
-        url = "/author/" + tag;
+        url = clientUtil.getAuthorLink(tag);
       } else if(tag === author){
-        url = "/author/" + tagHash;
+        url = clientUtil.getAuthorLink(tag);
       }else if(originalTags && originalTags.includes(tag)){
-        url = "/tag/" + tagHash;
+        url = clientUtil.getTagLink(tag);
       }else{
-        url = "/search/" + cleanSearchStr(tag);
+        url =  clientUtil.getSearhLink(tag);
       }
       
       url += "#sortOrder=" + Constant.SORT_BY_FOLDER;
@@ -617,10 +610,6 @@ export default class OneBook extends Component {
           </div>);
   }
 
-  getPathFromLocalStorage(){
-    const hash = this.getHash();
-    return clientUtil.getPathFromLocalStorage(hash);
-  }
 
   renderNextPrevButton(){
     if(isPad()){
@@ -651,13 +640,13 @@ export default class OneBook extends Component {
   }
 
   renderDownloadLink(){
-    return (<a href={"/api/download/"+this.getHash()}><i className="fa fa-fw fa-download"></i></a>);
+    return (<a href={clientUtil.getDownloadLink(this.getTextFromQuery())}><i className="fa fa-fw fa-download"></i></a>);
   }
 
   render() {
     if (this.isFailedLoading()) { 
       let userText;
-      const fp = this.getPathFromLocalStorage();
+      const fp = this.getTextFromQuery();
       if(fp){
         if(this.res.res.status === 404){
           userText = `Does not find ${fp}.`;
@@ -683,7 +672,7 @@ export default class OneBook extends Component {
                   </center>
                 </h3>);
       } else {
-        return (<CenterSpinner text={this.getPathFromLocalStorage()} splitFilePath/>);
+        return (<CenterSpinner text={this.getTextFromQuery()} splitFilePath/>);
       } 
     }
     

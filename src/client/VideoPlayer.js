@@ -5,13 +5,14 @@ import './style/VideoPlayer.scss';
 import ClickAndCopyText from './subcomponent/ClickAndCopyText';
 import FileChangeToolbar from './subcomponent/FileChangeToolbar';
 const clientUtil = require("./clientUtil");
-const { getDir, getBaseName, getPathFromLocalStorage, cleanSearchStr, stringHash } = clientUtil;
+const { getDir, getBaseName } = clientUtil;
 const namePicker = require("../human-name-picker");
 import { Link } from 'react-router-dom';
-import { array_unique } from '../util';
 const nameParser = require('../name-parser');
 import Sender from './Sender';
 const dateFormat = require('dateformat');
+const queryString = require('query-string');
+
 
 export default class VideoPlayer extends Component {
   constructor(props) {
@@ -21,7 +22,7 @@ export default class VideoPlayer extends Component {
   }
 
   componentDidMount(){
-    const filePath = getPathFromLocalStorage(this.getHash());
+    const filePath = this.getTextFromQuery();
     if(filePath){
       Sender.post("/api/singleFileInfo", {filePath}, res => {
         if(!res.failed){
@@ -35,8 +36,10 @@ export default class VideoPlayer extends Component {
     }
   }
 
-  getHash(){
-    return this.props.match.params.number;
+  getTextFromQuery(props){
+      //may allow tag author in future
+      const _props = props || this.props;
+      return queryString.parse(_props.location.search)["p"] ||  "";
   }
 
   onError(e){
@@ -47,11 +50,11 @@ export default class VideoPlayer extends Component {
   }
 
   renderDownloadLink(){
-    return (<a href={"/api/download/"+this.getHash()}><i className="fa fa-fw fa-download"></i></a>);
+    return (<a href={clientUtil.getDownloadLink(this.getTextFromQuery())}><i className="fa fa-fw fa-download"></i></a>);
   }
   
   renderTag(){
-    const filePath = getPathFromLocalStorage(this.getHash());
+    const filePath = this.getTextFromQuery();
     const fn = getBaseName(filePath);
     const dirName = getBaseName(getDir(filePath));
     const tags1 = namePicker.parse(fn) || [];
@@ -68,11 +71,11 @@ export default class VideoPlayer extends Component {
       })
     }
 
-    tags = array_unique(tags);
+    tags = _.uniq(tags);
     
     if(tags){
       const tagDoms = tags.map(tag => {
-          const url = "/search/" + cleanSearchStr(tag);
+          const url =  clientUtil.getSearhLink(tag);
           return (<Link className="video-tag"  target="_blank" to={url}  key={tag}>{tag}</Link>)
       });
 
@@ -81,10 +84,9 @@ export default class VideoPlayer extends Component {
   }
 
   renderPath() {
-    const filePath = getPathFromLocalStorage(this.getHash());
+    const filePath = this.getTextFromQuery();
     const parentPath = getDir(filePath);
-    const parentHash = stringHash(parentPath);
-    const toUrl = ('/explorer/'+ parentHash);
+    const toUrl = clientUtil.getExplorerLink(parentPath);
     
     return (
       <div className="one-book-path">
@@ -93,8 +95,8 @@ export default class VideoPlayer extends Component {
   }
 
   render() {
-    const filePath = getPathFromLocalStorage(this.getHash());
-    const url = "/api/download/" + this.getHash();
+    const filePath = this.getTextFromQuery();
+    const url = clientUtil.getDownloadLink(this.getTextFromQuery());
     const fileName = getBaseName(filePath);
     document.title = fileName;
     const {hasError, stat} = this.state;

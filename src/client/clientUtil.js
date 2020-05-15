@@ -13,7 +13,7 @@ const getBaseName = module.exports.getBaseName = function (fn, seperator) {
     return tokens[tokens.length - 1];
 };
 
-module.exports.getUrl = function (url){
+module.exports.getFileUrl = function (url){
     return "../" + encodeFileUrl(url);
 }
 
@@ -42,17 +42,6 @@ module.exports.getPerPageItemNumber = function() {
     }
 }
 
-module.exports.stringHash = function (str) {
-    const stringHash = require("string-hash");
-    const  result = stringHash(str);
-    window.localStorage && window.localStorage.setItem(result, str)
-    return result;
-};
-
-module.exports.getPathFromLocalStorage = function(hash){
-    return window.localStorage && window.localStorage.getItem(hash);
-}
-
 module.exports.sortFileNames = function(files){
     util._sortFileNames(files, getBaseNameWithoutExtention);
 }
@@ -72,14 +61,14 @@ module.exports.isAuthorized = function(){
     }
 }
 
-module.exports.cleanSearchStr = function(str){
-    // search/ケマオ9% will break everything
-    // it is too troublesome to do everything in url encoding 
-    //FYI, the doujin that make me release this is   (C98) [ケマオ9% (おな丸)] 鹿島とぱっこぱこ・弐 愛情は鹿島の胸に。 (艦隊これくしょん -艦これ-)
+// module.exports.cleanSearchStr = function(str){
+//     // search/ケマオ9% will break everything
+//     // it is too troublesome to do everything in url encoding 
+//     //FYI, the doujin that make me release this is   (C98) [ケマオ9% (おな丸)] 鹿島とぱっこぱこ・弐 愛情は鹿島の胸に。 (艦隊これくしょん -艦これ-)
 
-    //  "1233%123123%%".replace(/(%)+$/g, "")   =>  "1233%123123" 
-    return  str && str.replace(/(%)+$/g, "")
-}
+//     //  "1233%123123%%".replace(/(%)+$/g, "")   =>  "1233%123123" 
+//     return  str && str.replace(/(%)+$/g, "")
+// }
 
 module.exports.getSearchInputText = function(){
     const input = document.getElementsByClassName('search-input');
@@ -90,3 +79,32 @@ module.exports.isSearchInputTextTyping = function(){
     const input = document.getElementsByClassName('search-input');
     return input[0] && input[0] === document.activeElement;
 }
+
+module.exports.getExplorerLink = function(path){
+    return '/explorer/?p='+ path;
+}
+
+module.exports.getSearhLink = function(path){
+    return"/search/?s=" + path;
+}
+
+module.exports.getTagLink = function(path){
+    return"/tag/?t=" + path;
+}
+
+module.exports.getAuthorLink = function(path){
+    return"/author/?a=" + path;
+}
+
+module.exports.getOneBookLink = function(path){
+    return "/onebook/?p=" + path;
+}
+
+module.exports.getVideoPlayerLink = function(path){
+    return "/videoPlayer/?p=" + path;
+}
+
+module.exports.getDownloadLink = function(path){
+    return "/api/download/?p=" + path;
+}
+

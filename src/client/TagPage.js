@@ -15,7 +15,8 @@ const nameParser = require('../name-parser');
 
 const util = require("../util");
 const clientUtil = require("./clientUtil");
-const { getDir, getBaseName, getPerPageItemNumber, stringHash } = clientUtil;
+const { getDir, getBaseName, getPerPageItemNumber, } = clientUtil;
+const sortUtil = require("../common/sortUtil");
 
 
 function addOne(table, key) {
@@ -89,8 +90,7 @@ export default class TagPage extends Component {
   }
 
   chooseOneThumbnailForOneTag = function(files){
-    nameParser.sort_file_by_time(files, this.fileToInfo, getBaseName, false, false);
-
+    files = sortUtil.sort_file_by_time(files, this.fileToInfo, getBaseName, false, false);
     let result;
     files.some(e => {
       const thumbnail = this.allThumbnails[e];
@@ -186,9 +186,7 @@ export default class TagPage extends Component {
 
     const tagItems = keys.map((tag) => {
       const itemText = `${tag} (${items[tag]})`;
-      const tagHash = stringHash(tag);
-
-      const url = this.isAuthorMode()? ("/author/" + tagHash) :  ("/tag/" + tagHash);
+      const url = this.isAuthorMode()? clientUtil.getAuthorLink(tag) :  clientUtil.getTagLink(tag);
       const thumbnailUrl = this.chooseOneThumbnailForOneTag(t2Files[tag]);
 
       return  (<div key={tag} className="col-sm-6 col-md-4 col-lg-3 tag-page-list-item">
@@ -260,10 +258,7 @@ export default class TagPage extends Component {
                         showQuickJumper={{goButton: true}}
                         itemRender={(item, type) =>{
                           if(type === "page"){
-                              let url = location.pathname.split("/");
-                              url[2] = item;
-                              url = url.join("/");
-                              return  <Link to={url}  >{item}</Link>;
+                              return  <div>{item}</div>;
                           }else if(type === "prev" || type === "next"){
                               return <a className="rc-pagination-item-link" />
                           }
