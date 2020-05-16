@@ -110,33 +110,28 @@ export default class AdminPage extends Component {
     }
 
     renderHistory(){
-        const timeToFile = Cookie.get();
-        const times = _.keys(timeToFile);
-        times.sort((a, b) => (b -a)); //newer before old 
+        const history = clientUtil.getHistoryFromCookie();
 
-        const visited = {};
-        const history = times.map(t => {
-            const filePath =  timeToFile[t];
-            if(visited[filePath] || !filePath){
-                return;
-            }
-            visited[filePath] = true;
+        const historyDom = history.map(e => {
+            const timeStr = dateFormat(e[0], "mm-dd hh:MM");
+            const filePath = e[1];
             const toUrl =  clientUtil.getOneBookLink(filePath);
-            const timeStr = dateFormat(new Date(+t), "mm-dd hh:MM");
-            return (
-            <Link to={toUrl}  key={filePath} className={"history-link"}>
-                <div className="history-one-line-list-item" key={filePath}>
-                    <span className="date-text"> {timeStr} </span>
-                    <span className="file-text" title={filePath}> {getBaseName(filePath)}</span>
-                </div>
-            </Link>);
-        });
 
+            return (
+                <Link to={toUrl}  key={filePath} className={"history-link"}>
+                    <div className="history-one-line-list-item" key={filePath}>
+                        <span className="date-text"> {timeStr} </span>
+                        <span className="file-text" title={filePath}> {getBaseName(filePath)}</span>
+                    </div>
+                </Link>);
+
+        })
+        
         return (
         <div className="history-section admin-section">
             <div className="admin-section-title"> Recent Read</div>
             <div className="admin-section-content">
-                {history}
+                {historyDom}
             </div>
         </div>)
     }
@@ -161,7 +156,6 @@ export default class AdminPage extends Component {
             content = (<React.Fragment>
                         <div className="admin-section-title">Type password to move/delete file </div>
                         <div className="admin-section-content">
-                         {this.getPasswordInput() && <div> wrong password </div>}
                         <input className="admin-intput" ref={pathInput => this.passwordInputRef = pathInput}
                                     placeholder="...type here"  onChange={this.setPasswordCookie.bind(this)}/>
                         </div>
