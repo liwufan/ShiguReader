@@ -1,7 +1,7 @@
 # 基于node:alpine
 FROM node:alpine
 # 安装 node-sass 需要 python build-base，解压工具 p7zip
-RUN apk add --update-cache python build-base p7zip
+RUN apk add --update-cache python build-base imagemagick p7zip
 
 # js文件存放目录
 WORKDIR /usr/src/app
