@@ -11,7 +11,10 @@ const userConfig = require('../../user-config');
 
 const {getDirName} = serverUtil;
 const { isImage, isCompress, isMusic, isDisplayableInExplorer, isDisplayableInOnebook } = util;
-const {   generateContentUrl } = pathUtil;
+const { generateContentUrl } = pathUtil;
+
+const sevenZipHelp = require("../sevenZipHelp");
+const { listZipContent }= sevenZipHelp;
 
 
 const db = {
@@ -67,22 +70,15 @@ module.exports.initCacheDb = function(pathes, infos){
 }
 
 
-function shouldWatch(p){
+function shouldWatchForCache(p){
     const ext = path.extname(p).toLowerCase();
-    if (!ext ||  isDisplayableInExplorer(ext) || isMusic(ext) ||isImage(ext)) {
+    if (!ext ||  isDisplayableInOnebook(ext)) {
         return true;
     }
     return false;
 }
 
-function shouldIgnore(p){
-    return !shouldWatch(p);
-}
 
-function preParse(str){
-    //will save in memory
-    serverUtil.parse(str);
-}
 
 //!! same as file-iterator getStat()
 const updateStatToDb = module.exports.updateStatToDb = function(path, stat){
@@ -95,10 +91,30 @@ const updateStatToDb = module.exports.updateStatToDb = function(path, stat){
     db.fileToInfo[path] = result;
 }
 
+function shouldWatchForOne(p){
+    const ext = path.extname(p).toLowerCase();
+    if (!ext ||  isDisplayableInExplorer(ext) ) {
+        return true;
+    }
+    return false;
+}
+
+function shouldIgnoreForOne(p){
+    return !shouldWatchForOne(p);
+}
+
+function shouldIgnoreForCache(p){
+    return !shouldWatchForCache(p);
+}
+
+function preParse(str){
+    //will save in memory
+    serverUtil.parse(str);
+}
 
 module.exports.setUpFileWatch = function(home_pathes, cache_folder_name){
     const watcher = chokidar.watch(home_pathes, {
-        ignored: shouldIgnore,
+        ignored: shouldIgnoreForOne,
         ignoreInitial: true,
         persistent: true,
         ignorePermissionErrors: true
@@ -107,14 +123,20 @@ module.exports.setUpFileWatch = function(home_pathes, cache_folder_name){
     const addCallBack = (path, stats) => {
         preParse(path);
         updateStatToDb(path, stats);
+        
+        if(isCompress(path) && stats.size > 1*1024*1024){
+            listZipContent(path);
+        }
     };
 
     const deleteCallBack = path => {
+        //update dn
         delete db.fileToInfo[path];
     };
 
     watcher
         .on('add', addCallBack)
+        .on('change', addCallBack)
         .on('unlink', deleteCallBack);
     
     // More possible events.
@@ -124,7 +146,7 @@ module.exports.setUpFileWatch = function(home_pathes, cache_folder_name){
 
     //also for cache files
     const cacheWatcher = chokidar.watch(cache_folder_name, {
-        ignored: shouldIgnore,
+        ignored: shouldIgnoreForCache,
         persistent: true,
         ignorePermissionErrors: true,
         ignoreInitial: true,
