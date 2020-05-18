@@ -1,5 +1,4 @@
 const express = require('express');
-const fs = require('fs');
 const path = require('path');
 const execa = require('execa');
 const pfs = require('promise-fs');
@@ -20,62 +19,44 @@ const {
         fullPathToUrl,
         generateContentUrl,
         isExist,
+        getHomePath
 } = pathUtil;
-const { isImage, isCompress, isMusic, isVideo, arraySlice, getCurrentTime, isDisplayableInExplorer, isDisplayableInOnebook } = util;
+const { isImage, isCompress, isMusic, arraySlice, getCurrentTime, isDisplayableInExplorer, isDisplayableInOnebook } = util;
 
 //set up path
 const rootPath = pathUtil.getRootPath();
 const cache_folder_name = userConfig.cache_folder_name;
 const cachePath = path.join(rootPath, cache_folder_name);
-let logPath = path.join(rootPath, userConfig.workspace_name, "log");
-logPath = path.join(logPath, dateFormat(new Date(), "yyyy-mm-dd HH-MM"))+ ".log";
+
+const imgConvertFolder = path.join(rootPath, userConfig.workspace_name,  userConfig.img_convert_cache);
+
+//set up user path
+let home_pathes = getHomePath(imgConvertFolder);
+const path_will_scan = home_pathes.concat(userConfig.good_folder, userConfig.good_folder_root, userConfig.not_good_folder);
+const isProduction = process.argv.includes("--production");
+
+// console.log("--------------------");
+// console.log("process.cwd()", process.cwd());
+// console.log("__filename", __filename);
+// console.log("__dirname", __dirname);
+// console.log("rootPath", rootPath);
+// console.log("----------------------");
+
+const logger = require("./logger");
+
 
 //set up json DB
 const zipInfoDb = require("./models/zipInfoDb");
 let zip_content_db_path =  path.join(rootPath,  userConfig.workspace_name, "zip_info");
 zipInfoDb.init(zip_content_db_path);
-const { getPageNum, getMusicNum, updateZipDb }  = zipInfoDb;
+const { getPageNum, getMusicNum }  = zipInfoDb;
+
 
 const sevenZipHelp = require("./sevenZipHelp");
-const { sevenZip, get7zipOption , listZipContent, extractAll, extractByRange }= sevenZipHelp;
-
-
-//set up user path
-let home_pathes;
-const path_config_path = path.join(rootPath, "src", "path-config");
-//read text file 
-home_pathes = fs.readFileSync(path_config_path).toString().split('\n'); 
-home_pathes = home_pathes
-            .map(e => e.trim().replace(/\n|\r/g, ""))
-            .filter(pp =>{ return pp && pp.length > 0 && !pp.startsWith("#");});
-home_pathes = _.uniq(home_pathes);
-
-if(isWindows()){
-    const getDownloadsFolder = require('downloads-folder');
-    home_pathes.push(getDownloadsFolder());
-}else{
-    //downloads-folder cause error on unix
-    home_pathes.push(`${process.env.HOME}/Downloads`);
-}
-const path_will_scan = home_pathes.concat(userConfig.good_folder, userConfig.good_folder_root, userConfig.not_good_folder);
-
-const isProduction = process.argv.includes("--production");
-
-console.log("--------------------");
-console.log("process.cwd()", process.cwd());
-console.log("__filename", __filename);
-console.log("__dirname", __dirname);
-console.log("rootPath", rootPath);
-console.log("log path:", logPath);
-
-console.log("----------------------");
-
-const loggerModel = require("./models/logger");
-loggerModel.init(logPath);
-const logger = loggerModel.logger;
+const { listZipContent, extractAll, extractByRange }= sevenZipHelp;
 
 const db = require("./models/db");
-const {getAllFilePathes, getCacheFiles, getCacheOutputPath} = db;
+const { getAllFilePathes, getCacheFiles, getCacheOutputPath, updateStatToDb} = db;
 
 const app = express();
 app.use(express.static('dist', {
@@ -152,7 +133,6 @@ async function init() {
         console.log("----------------------------------------------------------------");
     }).on('error', (error)=>{
         logger.error("[Server Init]", error.message);
-        console.error("[Server Init]", error.message);
 
         //exit the current program
         setTimeout(()=> process.exit(22), 500);
@@ -185,11 +165,18 @@ function getThumbnails(filePathes){
     return thumbnails;
 }
 
+async function getStat(filePath){
+    const stat = await pfs.stat(filePath);
+    updateStatToDb(filePath, stat);
+    return stat;
+}
+
 
 serverUtil.common.path_will_scan = path_will_scan;
 serverUtil.common.getCacheOutputPath = getCacheOutputPath;
 serverUtil.common.cachePath = cachePath;
 serverUtil.common.getThumbnails = getThumbnails;
+serverUtil.common.getStat = getStat;
 
 //-----------------thumbnail related-----------------------------------
 
@@ -240,7 +227,7 @@ async function extractThumbnailFromZip(filePath, res, mode, config) {
     const isPregenerateMode = mode === "pre-generate";
     const sendable = !isPregenerateMode && res;
     const outputPath = getCacheOutputPath(cachePath, filePath);
-    let files;
+    let files, temp;
  
     function sendImage(img){
         let ext = path.extname(img);
@@ -274,7 +261,8 @@ async function extractThumbnailFromZip(filePath, res, mode, config) {
     //in case previous info is changed or wrong
     if(isPregenerateMode){
         //in pregenerate mode, it always updates db content
-        files = await listZipContent(filePath);
+        temp = await listZipContent(filePath);
+        files = temp.files;
     }
 
     //check if there is compress thumbnail  e.g thumbnail--001.jpg
@@ -295,7 +283,8 @@ async function extractThumbnailFromZip(filePath, res, mode, config) {
         //do the extract
         try{
             if(!files){
-                files = await listZipContent(filePath);
+                temp = await listZipContent(filePath);
+                files = temp.files;
             } 
             const one = serverUtil.chooseThumbnailImage(files);
             if(!one){
@@ -318,7 +307,6 @@ async function extractThumbnailFromZip(filePath, res, mode, config) {
             }
         } catch(e) {
             console.error("[extractThumbnailFromZip] exception", filePath,  e);
-            logger.error("[extractThumbnailFromZip] exception", filePath,  e);
             handleFail();
         }
     }
@@ -393,7 +381,8 @@ app.post('/api/extract', async (req, res) => {
     }
     
     const time1 = getCurrentTime();
-    const stat = await pfs.stat(filePath);
+    const stat = await getStat(filePath);
+ 
 
     function sendBack(files, musicFiles, path, stat){
         const tempFiles =  serverUtil.filterHiddenFile(files);
@@ -423,7 +412,7 @@ app.post('/api/extract', async (req, res) => {
     (async () => {
         const full_extract_max = 10;
         try{
-            let files = await listZipContent(filePath);
+            let { files, fileInfos } = await listZipContent(filePath);
             files = files.filter(e => isDisplayableInOnebook(e));
             if(files.length === 0){
                res.sendStatus(404);
@@ -433,7 +422,13 @@ app.post('/api/extract', async (req, res) => {
 
             let hasMusic = files.some(e => isMusic(e));
             if(hasMusic || files.length <= full_extract_max){
-                extractAll(filePath, outputPath, sendBack, res, stat);
+                const { pathes, error } = await extractAll(filePath, outputPath);
+                if(!error && pathes){
+                    const temp = generateContentUrl(pathes, outputPath);
+                    sendBack(temp.files, temp.musicFiles, filePath, stat);
+                } else {
+                    res.sendStatus(404);
+                }
             }else{
                 //spit one zip into two uncompress task
                 //so user can have a quicker response time
@@ -470,7 +465,6 @@ app.post('/api/extract', async (req, res) => {
        } catch (e){
             res.sendStatus(500);
             console.error('[/api/extract] exit: ', e);
-            logger.error('[/api/extract] exit: ', e);
         }
     })();
 });
@@ -512,6 +506,9 @@ app.use(CacheInfo);
 
 const shutdown = require("./routes/shutdown");
 app.use(shutdown);
+
+const minifyZip = require("./routes/minifyZip");
+app.use(minifyZip);
 
 if(isProduction){
     const history = require('connect-history-api-fallback');
