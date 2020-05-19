@@ -8,19 +8,33 @@
 
 .file-change-tool-bar {
   padding-top: 2px;
-  padding-left: 5px;
-  padding-right: 5px;
+
   color: $font_color_white_one;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   width: 100%;
-  
-  .letter-button,
-  .fas{
+
+  .tool-bar-row{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-left: 10px;
+    padding-right: 10px;
+
+    &.second{
+      margin-top: 5px;
+    }
+  }
+
+  &.bigFont{
+    .fa, .letter-button, .fas{
+      font-size: 14px;
+    }
+  }
+
+
+  .fa, .letter-button, .fas{
     margin-left: 5px;
     cursor: pointer;
-
+    font-size: 12px;
     &:hover{
       @include third_hover_effect;
     }

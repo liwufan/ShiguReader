@@ -8,7 +8,7 @@ const clientUtil = require("./clientUtil");
 const { getDir, getBaseName } = clientUtil;
 const namePicker = require("../human-name-picker");
 import { Link } from 'react-router-dom';
-const nameParser = require('../name-parser');
+const nameParser = require('@name-parser');
 import Sender from './Sender';
 const dateFormat = require('dateformat');
 const queryString = require('query-string');
@@ -47,10 +47,6 @@ export default class VideoPlayer extends Component {
     this.setState({
       hasError: true
     })
-  }
-
-  renderDownloadLink(){
-    return (<a href={clientUtil.getDownloadLink(this.getTextFromQuery())}><i className="fa fa-fw fa-download"></i></a>);
   }
   
   renderTag(){
@@ -102,7 +98,7 @@ export default class VideoPlayer extends Component {
     const {hasError, stat} = this.state;
     //use bootstrap classname util 
     const videoTitle = filePath && (<div className="video-title"> 
-                          <center> <ClickAndCopyText text={fileName} className="inline-display" />  {this.renderDownloadLink()} </center>
+                          <center> <ClickAndCopyText text={fileName} className="inline-display" /></center>
                           {this.renderPath()}
                          </div>);
 

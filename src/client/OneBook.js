@@ -1,6 +1,6 @@
 import React, { Component } from 'react';
 import _ from 'underscore';
-const nameParser = require('../name-parser');
+const nameParser = require('@name-parser');
 const classNames = require('classnames');
 const dateFormat = require('dateformat');
 import ReactDOM from 'react-dom';
@@ -17,15 +17,15 @@ import MusicPlayer from './MusicPlayer';
 import $ from 'jquery'
 import "./style/BigColumnButton.scss";
 
-const util = require("../util");
+const util = require("@common/util");
 const queryString = require('query-string');
 const filesizeUitl = require('filesize');
 import screenfull from 'screenfull';
-const Constant = require("../constant");
+const Constant = require("@common/constant");
 
 const MIN_HEIGHT = 400;
 const MIN_WIDTH = 400;
-const userConfig = require('../user-config');
+const userConfig = require('@config/user-config');
 const clientUtil = require("./clientUtil");
 const { getDir, getBaseName, isMobile, getFileUrl, sortFileNames } = clientUtil;
 
@@ -520,7 +520,7 @@ export default class OneBook extends Component {
     if (!this.state.path) {
       return;
     }
-    const toolbar = <FileChangeToolbar showAllButtons className="one-book-toolbar" file={this.state.path} popPosition={"top-center"}/>;
+    const toolbar = <FileChangeToolbar bigFont={true} showAllButtons className="one-book-toolbar" file={this.state.path} popPosition={"top-center"}/>;
     return toolbar;
   }
 
@@ -631,13 +631,10 @@ export default class OneBook extends Component {
     }
     return (<div className="one-book-second-toolbar">
               {content}
-              {this.renderDownloadLink()}
             </div>);
   }
 
-  renderDownloadLink(){
-    return (<a href={clientUtil.getDownloadLink(this.getTextFromQuery())}><i className="fa fa-fw fa-download"></i></a>);
-  }
+ 
 
   render() {
     if (this.isFailedLoading()) { 

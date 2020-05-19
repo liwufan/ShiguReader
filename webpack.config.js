@@ -4,11 +4,10 @@ const CleanWebpackPlugin = require('clean-webpack-plugin');
 
 const outputDirectory = 'dist';
 
-const portConfig = require('./src/port-config');
+const portConfig = require('./src/config/port-config');
 const {http_port, dev_express_port } = portConfig;
 
-
-module.exports = {
+const config = {
   entry: ['babel-polyfill', './src/client/index.js'],
   output: {
     path: path.join(__dirname, outputDirectory),
@@ -64,3 +63,13 @@ module.exports = {
     })
   ]
 };
+
+config.resolve = {
+  alias: {
+    "@common": path.resolve(__dirname, 'src/common/'),
+    "@config": path.resolve(__dirname, 'src/config/'),
+    "@name-parser": path.resolve(__dirname, 'src/name-parser/index'),
+  }
+}
+
+module.exports = config;

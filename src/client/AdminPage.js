@@ -7,7 +7,6 @@ import ReactDOM from 'react-dom';
 import Swal from 'sweetalert2';
 import Cookie from "js-cookie";
 import { Link } from 'react-router-dom';
-const userConfig = require('../user-config');
 import RadioButtonGroup from './subcomponent/RadioButtonGroup';
 const filesizeUitl = require('filesize');
 const clientUtil = require("./clientUtil");
@@ -25,8 +24,19 @@ export default class AdminPage extends Component {
         if(this.failedTimes < 3) {
             this.askCacheInfo();
             this.requestHomePagePathes();
+            this.askMinifyQueue();
         }
+    }
 
+    askMinifyQueue(){
+        Sender.post("/api/minifyZipQue", { }, res => {
+            if (!res.failed) {
+                let { minifyZipQue } = res;
+                this.setState({minifyZipQue})
+            }else{
+                this.failedTimes++;
+            }
+        });
     }
 
     requestHomePagePathes() {
@@ -186,6 +196,28 @@ export default class AdminPage extends Component {
         });
     }
 
+ 
+
+    renderMinifyQueue(){
+        const { minifyZipQue } = this.state;
+        let items;
+        if(!minifyZipQue || minifyZipQue.length === 0){
+            items = "Empty Queue"
+        }else{
+            items = minifyZipQue.map(e => {
+                return <div>{e} </div>
+            });
+        }
+        
+        return (
+            <div className="admin-section">
+                <div className="admin-section-title"> Zip Minify Queue</div>
+                <div className="admin-section-content">
+                    {items}
+                </div>
+            </div>)
+    }
+
     renderRemoteShutDown(){
         if(clientUtil.isLocalHost() || !clientUtil.isAuthorized()){
             return;
@@ -236,6 +268,8 @@ export default class AdminPage extends Component {
                 </div>
 
                 {this.renderHistory()}
+
+                {this.renderMinifyQueue()}
 
                 {this.renderRemoteShutDown()}
 

@@ -1,6 +1,6 @@
 const loki = require("lokijs");
 
-const util = require("../../util");
+const util = global.requireUtil();
 const { isCompress } = util;
 
 let loki_db;
@@ -89,6 +89,16 @@ module.exports.getZipInfo = function(filePathes){
     return fpToInfo;
 }
 
+module.exports.deleteFromZipDb = function(filePath){
+    if(!zip_content_db){
+        return;
+    }
+
+    if(has(filePath)){
+        let data = getData(filePath);
+        zip_content_db.remove(data);
+    }
+}
 
 module.exports.updateZipDb = function(filePath, info){
     if(!zip_content_db){

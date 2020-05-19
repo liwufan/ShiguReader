@@ -1,7 +1,7 @@
 import React, { Component } from 'react';
 import '../style/Spinner.scss';
 const spop  = require("./spop");
-const userConfig = require('../../user-config');
+const userConfig = require('@config/user-config');
 import PropTypes from 'prop-types';
 var classNames = require('classnames');
 import Swal from 'sweetalert2';
@@ -9,9 +9,9 @@ import Sender from '../Sender';
 import '../style/FileChangeToolbar.scss';
 import Dropdown from "./Dropdown";
 import DropdownItem from "./DropdownItem";
-const util = require("../../util");
+const util = require("@common/util");
 const clientUtil = require("../clientUtil");
-const { getDir, getBaseName } = clientUtil;
+const { getDir, getBaseName, getDownloadLink } = clientUtil;
 import _ from 'underscore';
 
 
@@ -20,19 +20,11 @@ export default class FileChangeToolbar extends Component {
         popPosition: "bottom-center"
     }
 
-    state = {
-        anchorEl: null,
-    };
-    
-    handleClick = event => {
-        this.setState({ anchorEl: event.currentTarget });
-    }
-
     handleMinifyZip(){
         const { file } = this.props;
         Swal.fire({
             title: "Minify Zip",
-            text: 'Do you want to minify the file?' ,
+            text: `Do you want to minify ${file}?`,
             showCancelButton: true,
             confirmButtonText: 'Yes',
             cancelButtonText: 'No'
@@ -61,16 +53,16 @@ export default class FileChangeToolbar extends Component {
     }
 
     handleDelete(){
-        this.setState({ anchorEl: null });
+        const { file } = this.props;
         Swal.fire({
             title: "Delete",
-            text: 'Do you want to delete this file?' ,
+            text: `Do you want to delete ${file}?` ,
             showCancelButton: true,
             confirmButtonText: 'Yes',
             cancelButtonText: 'No'
         }).then((result) => {
             if (result.value === true) {
-                Sender.simplePost("/api/deleteFile", {src: this.props.file}, res => {
+                Sender.simplePost("/api/deleteFile", {src: file}, res => {
                     if (!res.failed) {
                         spop({
                             style: "success",
@@ -93,7 +85,6 @@ export default class FileChangeToolbar extends Component {
     }
 
     handleClose = (path) => {
-        this.setState({ anchorEl: null });
 
         if(_.isString(path)){
             Swal.fire({
@@ -127,14 +118,19 @@ export default class FileChangeToolbar extends Component {
         }
     };
 
+    isShowAllButtons(){
+        const { additional_folder } = userConfig;
+        return this.props.showAllButtons || additional_folder.length <= 3;
+    }
+
     getDropdownItems(){
-        const {showAllButtons} = this.props;
-        return userConfig.additional_folder.map((e, index) =>{
+        const { additional_folder } = userConfig;
+        return additional_folder.map((e, index) =>{
             const dd = (<div tabIndex="0"  className="letter-button"  key={index}
             title={"Move to " + e}
-            onClick={this.handleClose.bind(this, e)}> {getBaseName(e)[0]} </div>);
+            onClick={this.handleClose.bind(this, e)}> {getBaseName(e).slice(0, 2)} </div>);
 
-            if(showAllButtons){
+            if(this.isShowAllButtons()){
                 return dd;
             }else{
                 return  (<DropdownItem key={index}>
@@ -144,42 +140,58 @@ export default class FileChangeToolbar extends Component {
         });
     }
 
+    renderDownloadLink(){
+        return (<a className="fa fa-fw fa-download" href={clientUtil.getDownloadLink(this.props.file)} />);
+    }
+
+    renderMinifyZipButton(){
+        const {file, className, header, showAllButtons, hasMusic, bigFont} = this.props;
+        const showMinifyZip = util.isCompress(file) && !hasMusic;
+        if(showMinifyZip){
+            return ( <div tabIndex="0" className="fas fa-hand-scissors"  title="minify zip"
+                      onClick={this.handleMinifyZip.bind(this)}></div>)
+        }
+    }
+
     render(){
-        const {file, className, header, showAllButtons, hasMusic} = this.props;
-        const cn = classNames("file-change-tool-bar", className);
+        const {file, className, header, showAllButtons, hasMusic, bigFont} = this.props;
+        const cn = classNames("file-change-tool-bar", className, {
+            bigFont: bigFont
+        });
 
         if(!clientUtil.isAuthorized()){
             return  <div className={cn} ></div>;
         }
 
         let additional;
-        if(showAllButtons){
+        if(this.isShowAllButtons()){
             additional = this.getDropdownItems();
         }else{
             additional = <Dropdown>{this.getDropdownItems()}</Dropdown>;
         }
 
-        const showMinifyZip = util.isCompress(file) && !hasMusic;
+       
 
 
         return (
             <div className={cn} >
                 {header && <span className="file-change-tool-bar-header">{header}</span>}
-                { showMinifyZip && 
-                <div tabIndex="0" className="fas fa-hand-scissors"
-                                title="minify zip"
-                                onClick={this.handleMinifyZip.bind(this)}></div>
-                }
-                <div tabIndex="0" className="fas fa-trash-alt"
-                                title="Copy Del"
-                                onClick={this.handleDelete.bind(this)}></div>
-                <div tabIndex="0"  className="fas fa-check"
-                                title={"Move to " + userConfig.good_folder}
-                                onClick={this.handleClose.bind(this, userConfig.good_folder)}></div>
-                <div tabIndex="0"  className="fas fa-times"
-                                title={"Move to " + userConfig.not_good_folder}
-                                onClick={this.handleClose.bind(this, userConfig.not_good_folder)}></div>
-                {additional}
+                <div className="tool-bar-row">
+                    <div tabIndex="0" className="fas fa-trash-alt"
+                                    title="Copy Del"
+                                    onClick={this.handleDelete.bind(this)}></div>
+                    <div tabIndex="0"  className="fas fa-check"
+                                    title={"Move to " + userConfig.good_folder}
+                                    onClick={this.handleClose.bind(this, userConfig.good_folder)}></div>
+                    <div tabIndex="0"  className="fas fa-times"
+                                    title={"Move to " + userConfig.not_good_folder}
+                                    onClick={this.handleClose.bind(this, userConfig.not_good_folder)}></div>
+                </div>
+                <div className="tool-bar-row second">
+                    {this.renderDownloadLink()}
+                    {this.renderMinifyZipButton()}
+                    {additional}
+                </div>
             </div>
         )
      }

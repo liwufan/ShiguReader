@@ -49,14 +49,17 @@ module.exports.file_change_password = "2020";
 
 //压缩图片的时候用的参数
 //传给magick用的
-module.exports.img_convert_quality = 60;
+module.exports.img_convert_quality = 65;
 
 //which output file 
 module.exports.img_convert_dest_type = ".jpg";
 
 //超过这个大小，再转换的时候同时压低分辨率。
 //现在太多漫画，扫描出来一来4000*6000。完全没有必要
-module.exports.img_reduce_resolution_threshold = 6; //in MB
+module.exports.img_reduce_resolution_threshold = 6*1024*1024 ; //in MB
+
+//小于这个大小，没有转换的必要
+module.exports.img_convert_min = 2.5*1024*1024; //in MB
 
 //Only Shrink Larger Images ('>' flag)
 //参考资料:http://www.imagemagick.org/Usage/resize/#shrink

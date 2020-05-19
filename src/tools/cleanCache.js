@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const rimraf = require("./rimraf");
-const util = require("../util");
 
 let counter = 0;
 const pathUtil = require("../server/pathUtil");
@@ -38,6 +37,7 @@ function del(file, cachePath){
 }
 
 function cleanCache(cachePath, config){
+    counter = 0
     if(!fs.existsSync(cachePath)){
         err = fs.mkdir(cachePath, (err) => {
             if (err){
@@ -73,8 +73,8 @@ function _clean(cachePath, config){
                     //compress first image to standard thumbnail
                     if(subfileName === thumbnail){
                         if(config.minized){
-                            const minifyImageFile = require("./minifyImageFile");
-                            minifyImageFile(fPath, subfileName, (err, info) => { 
+                            const thumbnailGenerator = require("./thumbnailGenerator");
+                            thumbnailGenerator(fPath, subfileName, (err, info) => { 
                                 if(!err){
                                     del(filePath, cachePath);
                                 }

@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const util = require("../util");
+const util = global.requireUtil();
 
-function minifyImageFile(p1, fileName, callback){
+function thumbnailGenerator(p1, fileName, callback){
     try{
         //sharp is difficult to install, because GFW
         //but the server runs without it anyway
@@ -20,9 +20,9 @@ function minifyImageFile(p1, fileName, callback){
             });
             }
     } catch(e) {
-        console.error("[minifyImageFile] exception", e);
+        console.error("[thumbnailGenerator] exception", e);
         callback && callback(err, info);
     }
 }
 
-module.exports = minifyImageFile;
+module.exports = thumbnailGenerator;
