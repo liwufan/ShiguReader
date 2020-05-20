@@ -36,10 +36,9 @@ const rootPath = pathUtil.getRootPath();
 const cache_folder_name = userConfig.cache_folder_name;
 const cachePath = path.join(rootPath, cache_folder_name);
 
-const imgConvertFolder = path.join(rootPath, userConfig.workspace_name,  userConfig.img_convert_cache);
 
 //set up user path
-let { home_pathes, path_will_scan } = getHomePath(imgConvertFolder);
+let { home_pathes, path_will_scan } = getHomePath();
 const isProduction = process.argv.includes("--production");
 
 // console.log("--------------------");
@@ -96,30 +95,23 @@ async function init() {
 
     console.log("scanning local files");
 
-    const filter = (e, stat) => {
-        const minSize = 1000 * 10;
-        if(stat.size < minSize){
-            return false;
-        }
-        return isDisplayableInExplorer(e);
-    };
+ 
     let beg = (new Date).getTime()
     const results = fileiterator(path_will_scan, { 
-        filter:filter, 
+        filter: filterForOne, 
         doLog: true
     });
     results.pathes = results.pathes.concat(home_pathes);
     let end = (new Date).getTime();
     console.log(`${(end - beg)/1000}s  to read local dirs`);
     console.log("Analyzing local files");
-    
     db.initFileToInfo(results.infos);
-
     console.log("There are", getAllFilePathes().length, "files");
+
 
     console.log("----------scan cache------------");
     const cache_results = fileiterator([cachePath], { 
-        filter: isImage, 
+        filter: cacheFilter, 
         doLog: true
     });
 
@@ -147,20 +139,35 @@ async function init() {
     });
 }
 
+const filterForOne = (e) => {
+    return isDisplayableInExplorer(e) && !serverUtil.isHiddenFile(e);
+};
+
 function shouldWatchForOne(p){
+    if(serverUtil.isHiddenFile(p)){
+        return false;
+    }
     const ext = path.extname(p).toLowerCase();
-    return !ext ||  isDisplayableInExplorer(ext);
+    return  !ext ||  isDisplayableInExplorer(ext);
 }
 
 function shouldIgnoreForOne(p){
     return !shouldWatchForOne(p);
 }
 
+const cacheFilter = (e) => {
+    return isDisplayableInOnebook(e) && !serverUtil.isHiddenFile(e);
+};
+
+
 function shouldIgnoreForCache(p){
     return !shouldWatchForCache(p);
 }
 
 function shouldWatchForCache(p){
+    if(serverUtil.isHiddenFile(p)){
+        return false;
+    }
     const ext = path.extname(p).toLowerCase();
     return !ext ||  isDisplayableInOnebook(ext)
 }
@@ -297,7 +304,7 @@ function logForPre(prefix, config, filePath) {
     if(minCounter > 0){
         const secPerFile = timeUsed /minCounter;
         const remainTime = (total - minCounter) * secPerFile/60;
-        console.log(`${prefix} ${(secPerFile).toFixed(2)} seconds per file.       ${prefix} ${remainTime.toFixed(2)} minutes before finish`);
+        console.log(`${prefix} ${(secPerFile).toFixed(2)} seconds per file.     ${remainTime.toFixed(2)} minutes before finish`);
     }
     if(minCounter >= total){
         console.log('[pregenerate] done');
@@ -457,7 +464,7 @@ app.post('/api/extract', async (req, res) => {
         const fn = path.basename(filePath);
         //todo loop is slow
         const isSomewhere = getAllFilePathes().some(e => {
-            if(path.basename(e) = fn){
+            if(path.basename(e) === fn){
                 filePath = e;
                 return true;
             }

@@ -25,6 +25,8 @@ const clientUtil = require("./clientUtil");
 const { getDir, getBaseName, getPerPageItemNumber, isSearchInputTextTyping } = clientUtil;
 const { isVideo, isCompress } = util;
 const sortUtil = require("../common/sortUtil");
+const AdminUtil = require("./AdminUtil");
+
 
 const { SORT_FROM_LATEST, 
         SORT_FROM_EARLY,
@@ -311,6 +313,7 @@ export default class ExplorerPage extends Component {
         });
     }
 
+
     //comes from file db.
     //may not be reliable
     getFileSize(e){
@@ -319,6 +322,10 @@ export default class ExplorerPage extends Component {
 
     getPageNum(fp){
        return +(this.zipInfo[fp] && this.zipInfo[fp].pageNum) || 0;
+    }
+
+    hasZipInfo(fp){
+       return !!this.zipInfo[fp];
     }
 
     //comes from zipInfo libray, may not be reliable
@@ -504,7 +511,9 @@ export default class ExplorerPage extends Component {
             if(!this.res){
                 return (<CenterSpinner text={this.getTextFromQuery()}/>);
             }else{
-                return <center className="one-book-nothing-available">Nothing Available</center>;
+                return (<div className="one-book-nothing-available">
+                            <div className="alert alert-secondary" role="alert">    Empty Folder </div>
+                        </div>);
             }
         } 
         
@@ -564,6 +573,7 @@ export default class ExplorerPage extends Component {
                     "f-s-14": fl <= 30
                 });
 
+                const hasZipInfo = this.hasZipInfo(item);
                 const musicNum = this.getMusicNum(item);
                 const hasMusic = musicNum > 0;
 
@@ -586,9 +596,9 @@ export default class ExplorerPage extends Component {
                         </Link>
                         <div className={fileInfoRowCn}>
                             <span title="file size">{fileSizeStr}</span>
-                            <span>{`${this.getPageNum(item)} pages`}</span>
-                            {hasMusic && <span>{`${musicNum} songs`}</span>}
-                            <span title="average img size"> {avgSizeStr} </span>
+                            {hasZipInfo  &&  <span>{`${this.getPageNum(item)} pages`}</span>}
+                            {hasMusic    &&  <span>{`${musicNum} songs`}</span>}
+                            {hasZipInfo  &&  <span title="average img size"> {avgSizeStr} </span>}
                         </div>
                         <FileChangeToolbar hasMusic={hasMusic} className="explorer-file-change-toolbar" file={item} />
                     </div>
@@ -626,6 +636,11 @@ export default class ExplorerPage extends Component {
     }
 
     toggleRecursively(){
+        this.videoFiles = []
+        this.files = [];
+        this.dirs = [];
+        this.res = null;
+
         this.setStateAndSetHash({
             pageIndex: 1,
             isRecursive: !this.state.isRecursive
@@ -694,6 +709,18 @@ export default class ExplorerPage extends Component {
                          <span className="fas fa-chart-line" /> 
                          <span> chart </span>
                     </Link>)
+        }
+    }
+
+    renderChartButton(){
+        if(this.getMode() === MODE_EXPLORER){
+            const text = "generate thumbnail"
+            return (
+               <span key="thumbnail-button" className="thumbnail-button exp-top-button" onClick={()=>AdminUtil.askPregenerate(this.getPathFromQuery())}> 
+               <span className="fas fa-tools" />
+               <span> {text} </span>
+               </span>
+            );
         }
     }
 

@@ -8,6 +8,10 @@ const path = require('path');
 const getCacheOutputPath = db.getCacheOutputPath;
 const cachePath = serverUtil.common.cachePath;
 
+const pathUtil = require("../pathUtil");
+
+const deleteEmpty = require('delete-empty');
+
 function doCacheClean(config){
     const cleanCache = require("../../tools/cleanCache");
     try{
@@ -31,6 +35,13 @@ router.post('/api/cleanCache', (req, res) => {
     }
 
     doCacheClean({minized: minized, allowFileNames: allowFileNames, afterClean: afterClean});
+
+    //delete empty folder
+    deleteEmpty(pathUtil.getImgConverterCachePath(), (err, deleted) => {
+        if(!err){
+            console.error(err); 
+        }
+    });
 });
 
 module.exports = router;
