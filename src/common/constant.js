@@ -6,12 +6,30 @@ module.exports.MODE_AUTHOR = "mode author";
 module.exports.MODE_SEARCH = "mode search";
 module.exports.MODE_EXPLORER = "mode explorer";
 
-module.exports.SORT_FROM_LATEST = "From Latest";
-module.exports.SORT_FROM_EARLY = "From Earliest";
-module.exports.SORT_FROM_SMALL_FILE_SIZE = "From small file size";
-module.exports.SORT_FROM_BIG_FILE_SIZE = "From big file size";
-module.exports.SORT_FROM_SMALL_PAGE_SIZE = "From small page size";
-module.exports.SORT_FROM_BIG_PAGE_SIZE = "From big page size";
-module.exports.SORT_BY_FOLDER = "By folder name";
-module.exports.SORT_BY_FILENAME = "By filename";
-module.exports.SORT_RANDOMLY = "Random";
+module.exports.SORT_OPTIONS = [
+    "time",
+    "file size",
+    "avg page size",
+    "page number",
+    "file name",
+    "random"
+];
+
+module.exports.TIME_DOWN = "time_down";
+module.exports.TIME_UP = "time_up";
+
+module.exports.FILE_SIZE_DOWN = "file size_down";
+module.exports.FILE_SIZE_UP = "file size_up";
+
+module.exports.AVG_PAGE_SIZE_UP = "avg page size_up";
+module.exports.AVG_PAGE_SIZE_DOWN = "avg page size_down";
+
+module.exports.PAGE_NUMBER_UP = "page number_up";
+module.exports.PAGE_NUMBER_DOWN = "page number_down";
+
+module.exports.FILENAME_UP = "file name_up";
+module.exports.FILENAME_DOWN = "file name_down";
+
+module.exports.BY_FOLDER_DOWN = "by folder name_down";
+module.exports.BY_FOLDER_UP = "by folder name_up";
+module.exports.SORT_RANDOMLY = "random";

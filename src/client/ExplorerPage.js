@@ -16,6 +16,7 @@ const util = require("@common/util");
 const filesizeUitl = require('filesize');
 const queryString = require('query-string');
 import RadioButtonGroup from './subcomponent/RadioButtonGroup';
+import SortHeader from './subcomponent/SortHeader';
 import Breadcrumb from './subcomponent/Breadcrumb';
 import Checkbox from './subcomponent/Checkbox';
 const nameParser = require('@name-parser');
@@ -28,14 +29,18 @@ const sortUtil = require("../common/sortUtil");
 const AdminUtil = require("./AdminUtil");
 
 
-const { SORT_FROM_LATEST, 
-        SORT_FROM_EARLY,
-        SORT_BY_FOLDER,
-        SORT_BY_FILENAME,
-        SORT_FROM_SMALL_FILE_SIZE,
-        SORT_FROM_BIG_FILE_SIZE,
-        SORT_FROM_SMALL_PAGE_SIZE,
-        SORT_FROM_BIG_PAGE_SIZE,
+const { TIME_DOWN, 
+        TIME_UP,
+        BY_FOLDER_DOWN,
+        BY_FOLDER_UP,
+        FILENAME_UP,
+        FILENAME_DOWN,
+        FILE_SIZE_UP,
+        FILE_SIZE_DOWN,
+        AVG_PAGE_SIZE_UP,
+        AVG_PAGE_SIZE_DOWN,
+        PAGE_NUMBER_UP,
+        PAGE_NUMBER_DOWN,
         SORT_RANDOMLY } =  Constant;
 
 const { MODE_TAG,
@@ -66,7 +71,7 @@ export default class ExplorerPage extends Component {
         const parsed = reset? {} : queryString.parse(location.hash);
         const pageIndex = parseInt(parsed.pageIndex) || 1;
         const isRecursive = !!(parsed.isRecursive === "true");
-        const sortOrder = parsed.sortOrder || SORT_FROM_LATEST;
+        const sortOrder = parsed.sortOrder || TIME_DOWN;
         const showVideo = !!(parsed.showVideo === "true");
         
         return {
@@ -451,39 +456,46 @@ export default class ExplorerPage extends Component {
             return ap.localeCompare(bp);
         }
 
-        let inRandom = false;
-
-        if(sortOrder  === SORT_BY_FILENAME){
+        if (sortOrder.includes(SORT_RANDOMLY)){
+            files = _.shuffle(files);
+        }else if(sortOrder  === FILENAME_UP || sortOrder === FILENAME_DOWN){
             files.sort((a, b) => {
                 return byFn(a, b);
             });
-        }else if(sortOrder === SORT_BY_FOLDER){
+
+            if(sortOrder === FILENAME_DOWN){
+                files.reverse();
+            }
+        }else if(sortOrder === BY_FOLDER_UP || sortOrder === BY_FOLDER_DOWN){
             files = _.sortBy(files, e => {
                 const dir =  getDir(e);
                 return dir;
             });
-        }else if (sortOrder === SORT_FROM_LATEST ||  sortOrder === SORT_FROM_EARLY){
-            const ifFromEarly = sortOrder === SORT_FROM_EARLY;
+
+            if(sortOrder === BY_FOLDER_DOWN){
+                files.reverse();
+            }
+        }else if (sortOrder === TIME_DOWN ||  sortOrder === TIME_UP){
+            const ifFromEarly = sortOrder === TIME_UP;
             const ifOnlyBymTime = this.getMode() === MODE_EXPLORER;
             files = sortUtil.sort_file_by_time(files, this.fileInfos, getBaseName, ifFromEarly, ifOnlyBymTime);
-        } else if (sortOrder === SORT_FROM_BIG_FILE_SIZE || sortOrder === SORT_FROM_SMALL_FILE_SIZE){
+        } else if (sortOrder === FILE_SIZE_DOWN || sortOrder === FILE_SIZE_UP){
             files = _.sortBy(files, e => {
                 const size =  this.getFileSize(e);
-                return sortOrder === SORT_FROM_SMALL_FILE_SIZE? size: -size;
+                return sortOrder.includes("_up")? size: -size;
             });
-        } else if (sortOrder === SORT_FROM_SMALL_PAGE_SIZE || sortOrder === SORT_FROM_BIG_PAGE_SIZE){
+        } else if (sortOrder === AVG_PAGE_SIZE_UP || sortOrder === AVG_PAGE_SIZE_DOWN){
             files = _.sortBy(files, e => {
                 const size =  this.getPageAvgSize(e);
-                return sortOrder === SORT_FROM_SMALL_PAGE_SIZE? size: -size;
+                return sortOrder.includes("_up")? size: -size;
             });
-        } else if (sortOrder === SORT_RANDOMLY){
-            if(!this.isAlreadyRandom){
-                files = _.shuffle(files);
-            }
-            inRandom = true;
+        } else if (sortOrder === PAGE_NUMBER_UP || sortOrder === PAGE_NUMBER_DOWN){
+            files = _.sortBy(files, e => {
+                const size =  this.getPageNum(e);
+                return sortOrder.includes("_up")? size: -size;
+            });
         }
 
-        this.isAlreadyRandom = inRandom;
         return files;
     }
 
@@ -548,8 +560,8 @@ export default class ExplorerPage extends Component {
             const avgSizeStr = avgSize && filesizeUitl(avgSize, {base: 2});
 
             let seperator;
-
-            if(sortOrder === SORT_BY_FOLDER && 
+ 
+            if((sortOrder === BY_FOLDER_DOWN || sortOrder === BY_FOLDER_UP  ) &&
                 (this.getMode() === MODE_AUTHOR || this.getMode() === MODE_TAG || this.getMode() === MODE_SEARCH )){
                 const prev = files[index - 1];
                 if(!prev || getDir(prev) !== getDir(item)){
@@ -622,6 +634,7 @@ export default class ExplorerPage extends Component {
                     {videoItems}
                 </ul>
                 {this.renderPagination()}
+                {this.renderSortHeader()}
                 <div className={"file-grid container"}>
                     <div className={rowCn}>
                         {zipfileItems}
@@ -874,22 +887,6 @@ export default class ExplorerPage extends Component {
     }
 
     renderSideMenu(){
-        const SORT_OPTIONS = [
-            SORT_FROM_LATEST,
-            SORT_FROM_EARLY,
-            SORT_FROM_BIG_FILE_SIZE,
-            SORT_FROM_SMALL_FILE_SIZE,
-            SORT_FROM_BIG_PAGE_SIZE,
-            SORT_FROM_SMALL_PAGE_SIZE,
-            SORT_BY_FILENAME
-        ];
-
-        if(this.getMode() !== MODE_EXPLORER){
-            SORT_OPTIONS.push(SORT_BY_FOLDER);
-        }
-
-        SORT_OPTIONS.push(SORT_RANDOMLY);
-
         const tag2Freq = {};
         const files = this.getFilteredFiles();
         files.forEach(e => {
@@ -930,13 +927,8 @@ export default class ExplorerPage extends Component {
                 anchorSideMenu: this.state.anchorSideMenu
             });
 
+       
             return (<div className={cn}>
-                    <div className="side-menu-radio-title"> File Order </div>
-                    <RadioButtonGroup  
-                            className="sort-radio-button-group"
-                            checked={SORT_OPTIONS.indexOf(this.state.sortOrder)} 
-                            options={SORT_OPTIONS} name="explorer-sort-order" 
-                            onChange={this.onSortChange.bind(this)}/>
                     <div className="side-menu-radio-title"> Special Filter </div>
                     {this.renderSpecialFilter()}
                     {tagContainer}
@@ -944,8 +936,23 @@ export default class ExplorerPage extends Component {
         }
     }
 
+    renderSortHeader(){
+        if(this.getMode() === MODE_HOME){
+            return;
+        }
+
+        let sortOptions = Constant.SORT_OPTIONS;
+
+        if(this.getMode() !== MODE_EXPLORER ){
+            sortOptions = sortOptions.concat("by folder name");
+        }
+
+        return (<div className="sort-header-container container"> 
+            <SortHeader  options={sortOptions} value={this.state.sortOrder} onChange={this.onSortChange.bind(this)} />
+            </div>);
+    }
+
     renderSpecialFilter(){
-        
         //no one pay me, I am not going to improve the ui
         let checkbox;
         if(this.state.goodAuthors){
