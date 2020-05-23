@@ -2,26 +2,98 @@ const config = require("./name-parser-config");
 const same_tags = config.same_tags;
 const not_author_but_tag = config.not_author_but_tag;
 const char_names = require("./character-names");
-const convertTable = {};
+//https://stackoverflow.com/questions/5582574/how-to-check-if-a-string-contains-text-from-an-array-of-substrings-in-javascript
+const char_name_regex = new RegExp(char_names.join("|"));
 
+
+const book_types = [
+    "同人音声",
+    "同人ソフト",
+    "同人CG集",
+    "同人ゲーム",
+    "成年コミック",
+    "一般コミック",
+    "ゲームCG",
+    "画集"
+]
 
 const localCache = {};
 
-const ALL_COMIC_TAGS = [];
-const comiket_tags = [];
-const comic_star_tags = [];
-for(let index = 65; index < 100; index++){
-    comiket_tags.push(`C${index}`);
-    ALL_COMIC_TAGS.push(`C${index}`);
+function init(){
+    let comiket_tags = [];
+    let comic_star_tags = [];
+    for(let index = 65; index < 100; index++){
+        comiket_tags.push(`C${index}`);
+    }
+    
+    comic_star_tags.push("COMIC1");
+    for(let index = 2; index < 20; index++){
+        comic_star_tags.push(`COMIC1☆${index}`)
+    }
+
+    let all_comic_tags = comiket_tags.concat(comic_star_tags);
+
+    const all_comic_tags_table = {}
+    all_comic_tags.forEach(e => {
+        all_comic_tags_table[e.toLowerCase()] = true;
+    });
+
+    const book_type_table = {};
+    book_types.forEach(e => {
+        book_type_table[e.toLowerCase()] = true;
+    })
+
+    const not_author_but_tag_table = {};
+    not_author_but_tag.forEach(e => {
+        not_author_but_tag_table[e.toLowerCase()] = true;
+    })
+
+
+    //--------------------------------------------
+    const convert_table = {};
+    same_tags.forEach(row => {
+        for(let ii = 1; ii < row.length; ii++){
+            convert_table[row[ii]] = row[0];
+        }
+    });
+
+
+    //------------------------------------
+    return {
+        all_comic_tags,
+        all_comic_tags_table,
+        book_type_table,
+        not_author_but_tag_table,
+        comiket_tags,
+        comic_star_tags,
+        convert_table
+    }
 }
 
-ALL_COMIC_TAGS.push("COMIC1");
-for(let index = 2; index < 20; index++){
-    comic_star_tags.push(`COMIC1☆${index}`)
-    ALL_COMIC_TAGS.push(`COMIC1☆${index}`);
-}
+const {
+    all_comic_tags,
+    all_comic_tags_table,
+    not_author_but_tag_table,
+    book_type_table,
+    comiket_tags,
+    comic_star_tags,
+    convert_table
+} = init();
+
 
 const tag_to_date_table = {};
+function getDateFromParse(str){
+    const pp = parse(str);
+    let result;
+    if(pp){
+        if(pp.dateTag){
+            result = getDateFromStr(pp.dateTag);
+        }else{
+            result = getDateFromTags(pp.tags)
+        }
+    }
+    return result;
+}
 
 //for sort algo, not very accurate
 function getDateFromTags(tags){
@@ -29,7 +101,7 @@ function getDateFromTags(tags){
       return null;
   }
 
-  const _tags =  tags.filter(e => ALL_COMIC_TAGS.includes(e));
+  const _tags =  tags.filter(e => all_comic_tags.includes(e));
   let tag = _tags && _tags[0];
   let result = null;
   let num;
@@ -66,22 +138,36 @@ function getDateFromTags(tags){
   return result;
 }
 
-same_tags.forEach(row => {
-    for(let ii = 1; ii < row.length; ii++){
-        convertTable[row[ii]] = row[0];
-    }
-});
 
-char_names.sort((a, b) => (b.length - a.length))
-
-let pReg = /\((.*?)\)/g  
-let bReg = /\[(.*?)\]/g ;
+let pReg = /\((.*?)\)/g;
+let bReg = /\[(.*?)\]/g;
 
 function isOnlyDigit(str){
     return str.match(/^[0-9]+$/) != null
 }
 
-function isDate(str) {
+function getDateFromStr(str){
+    let y = convertYearString(str);
+    let m = parseInt(str.slice(2, 4));
+    let d = parseInt(str.slice(4, 6));
+
+    m = m - 1;
+    return new Date(y, m, d);
+}
+
+function convertYearString(str) {
+    let y =  parseInt(str.slice(0, 2));
+
+    if (y > 80) {
+        y = 1900 + y;
+    }else {
+        y = 2000 + y;
+    }
+
+    return y;
+}
+
+function isStrDate(str) {
     if (str && str.length === 6) {
         const y = parseInt(str.slice(0, 2));
         const m = parseInt(str.slice(2, 4));
@@ -93,19 +179,6 @@ function isDate(str) {
         return !invalid;
     }
     return false;
-}
-
-function convertYearString(str) {
-    let y =  parseInt(str.slice(0, 2));
-    const m = str.slice(2, 4);
-
-    if (y > 80) {
-        y = 1900 + y;
-    }else {
-        y = 2000 + y;
-    }
-
-    return y + "/" + m;
 }
 
 function getAuthorName(str){
@@ -132,28 +205,52 @@ function match(reg, str){
     return result;
 }
 
-const NEED_GROUP = false;
+function getTypeAndComiket(tags, group){
+    let comiket;
+    let type;
+    tags.forEach(e => {
+        e = e.toLowerCase();
+        if(all_comic_tags_table[e]){
+            comiket = e;
+        }else if(book_type_table[e]){
+            type = e;
+        }
+    })
 
-const _TYPES_ = [
-    "同人音声",
-    "成年コミック",
-    "一般コミック",
-    "同人CG集",
-    "ゲームCG",
-    "画集"
-]
-
-function includesWithoutCase(list, str){
-    if(!str){
-        return false;
+    if(!type){
+        if(comiket|| group){
+            type = "Doujin";
+        }else{
+            type = "etc";
+        }
     }
-    list = (list||[]).map(e => e.toLowerCase());
-    str = str.toLowerCase();
-    return list.includes(str);
+
+    return {
+        comiket, type
+    }
 }
 
-function toLowerCase(list, str){
-    return list.map(e => e.toLowerCase());
+function getTag(str, pMacthes, author){
+    let tags = [];
+    if (pMacthes && pMacthes.length > 0) {
+        tags = tags.concat(pMacthes);
+        tags = tags.filter(e=> {return !isOnlyDigit(e)});
+    }
+
+    if(author && tags.indexOf(author) >= 0){
+        tags.splice(tags.indexOf(author), 1);
+    }
+
+    const names = char_name_regex && str.match(char_name_regex);
+    names && names.forEach(e => {
+        tags.push(e);
+    })
+
+    tags = tags.map(e => {
+        return convert_table[e] || e;
+    })
+
+    return tags;
 }
 
 function parse(str) {
@@ -165,8 +262,8 @@ function parse(str) {
         return localCache[str];
     }
 
-    const bMacthes =  match(bReg, str);
-    const pMacthes = match(pReg, str);
+    const bMacthes =  match(bReg, str); //[]
+    const pMacthes = match(pReg, str);  //()
 
     const hasB = (bMacthes && bMacthes.length > 0);
     const hasP = (pMacthes && pMacthes.length > 0);
@@ -176,80 +273,50 @@ function parse(str) {
         return;
     }
 
-    let tags = [];
     let author = null;
     let group = null;
+    let dateTag;
+    let tags = [];
 
     // looking for author, avoid 6 year digit
     if (bMacthes && bMacthes.length > 0) {
         for (let ii = 0; ii < bMacthes.length; ii++) {
             let token = bMacthes[ii].trim();
-            if(isOnlyDigit(token)){
-                if (isDate(token)) {
-                    token = convertYearString(token);
-                    tags.push(token);
-                }
-            } else {
+            const tt = token.toLowerCase();
+            const nextCharIndex = str.indexOf(bMacthes[ii]) + bMacthes[ii].length + 1; 
+            const nextChar = str[nextCharIndex];
+
+            if (token.length === 6 && isOnlyDigit(token) && isStrDate(token)) {
+                //e.g 190214
+                dateTag = token;
+            } else if (not_author_but_tag_table[tt]){
+                //e.g pixiv is not author
+                tags.push(token);
+            } else if (nextChar === "." || nextCharIndex >= str.length){
+                //e.g KI-RecenT SP02 NATURALCORDE [DL版].zip
+                // [DL版] is not auhor name
+                tags.push(token);
+            } else if(!author) {
                 //  [真珠貝(武田弘光)]
                 const temp = getAuthorName(token);
-                author = temp.name;
-                // NEED_GROUP && temp.group && tags.push(temp.group);
+                if(!not_author_but_tag_table[temp.name]){
+                    //e.g よろず is not author
+                    author = temp.name;
+                }
                 group = temp.group;
-                break;
+            }else{
+                tags.push(token);
             }
         }
     }
 
-    if (pMacthes && pMacthes.length > 0) {
-        tags = tags.concat(pMacthes);
-        tags = tags.filter(e=> {return !isOnlyDigit(e)});
-    }
-
-    if(tags.indexOf(author) >= 0){
-        tags.splice(tags.indexOf(author), 1);
-    }
-
-    char_names.forEach(name => {
-        if(str.indexOf(name) > -1 && (author||"").indexOf(name) === -1 ){
-            tags.push(name);
-        }
-    })
-
-    tags = tags.map(e => {
-        if(convertTable[e]){
-            return convertTable[e];
-        }
-        return e;
-    })
-
-    if(includesWithoutCase(not_author_but_tag, author)){
-        tags.push(author);
-        author = null;
-    }
-
-    if(!author && !group){
+    tags = tags.concat(getTag(str, pMacthes, author));
+    if(!author && !group && tags.length === 0){
         localCache[str] = "NO_EXIST";
         return;
     }
 
-    let comiket = null;
-    tags.forEach(e => {
-        if(includesWithoutCase(ALL_COMIC_TAGS, e)){
-            comiket = e;
-        }
-    })
-
-    let type;
-    _TYPES_.forEach(t => {
-        if(includesWithoutCase(tags, t)){
-            type = t;
-        }
-    });
-
-    if(!type && (comiket|| group)){
-        type = "Doujin";
-    }
-    type = type || "etc";
+    const { comiket, type } = getTypeAndComiket(tags, group);
 
     let title = str;
     (bMacthes||[]).concat( pMacthes||[], tags||[], [/\[/g, /\]/g, /\(/g, /\)/g ]).forEach(e => {
@@ -260,17 +327,15 @@ function parse(str) {
     const authors = author && author.includes("、")? author.split("、") : null;
 
     const result = {
-        author, tags, comiket, type, group, title, authors
+       dateTag, author, tags, comiket, type, group, title, authors
     };
 
     localCache[str] = result;
     return result;
 }
 
-
-
 module.exports.parse = parse;
 module.exports.isOnlyDigit = isOnlyDigit;
-module.exports.ALL_COMIC_TAGS = ALL_COMIC_TAGS;
+module.exports.all_comic_tags = all_comic_tags;
 module.exports.getDateFromTags = getDateFromTags;
-module.exports.includesWithoutCase = includesWithoutCase;
+module.exports.getDateFromParse = getDateFromParse;

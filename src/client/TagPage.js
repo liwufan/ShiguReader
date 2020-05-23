@@ -9,9 +9,11 @@ import { Link } from 'react-router-dom';
 import ErrorPage from './ErrorPage';
 import CenterSpinner from './subcomponent/CenterSpinner';
 import Pagination from './subcomponent/Pagination';
+import FileCellTitle from './subcomponent/FileCellTitle';
 import { Redirect } from 'react-router-dom';
-import { isCompress, isImage } from '@common/util';
+import { isCompress, isImage, getCurrentTime } from '@common/util';
 const nameParser = require('@name-parser');
+const classNames = require('classnames');
 
 const util = require("@common/util");
 const clientUtil = require("./clientUtil");
@@ -109,11 +111,13 @@ export default class TagPage extends Component {
     const authors = {};
     const authorToFiles = {};
     const tagToFiles = {};
-    const allFiles = _.keys(fileToInfo).filter(isCompress);
     this.fileToInfo = fileToInfo;
     this.allThumbnails = allThumbnails;
 
-    allFiles.forEach((filePath) => {
+    const beginTime = getCurrentTime();
+
+    for(let filePath in fileToInfo){
+      if(fileToInfo.hasOwnProperty(filePath) && isCompress(filePath)){
         const fileName = getBaseName(filePath);
         const result = nameParser.parse(fileName);
         if (result) {
@@ -124,7 +128,11 @@ export default class TagPage extends Component {
               addToArray(tagToFiles, tag, filePath);
             });
         }
-    });
+      }
+    }
+
+    const timeSpent = getCurrentTime() - beginTime;
+    // console.log(timeSpent)
 
     this.setState({
       tags,
@@ -188,11 +196,12 @@ export default class TagPage extends Component {
       const itemText = `${tag} (${items[tag]})`;
       const url = this.isAuthorMode()? clientUtil.getAuthorLink(tag) :  clientUtil.getTagLink(tag);
       const thumbnailUrl = this.chooseOneThumbnailForOneTag(t2Files[tag]);
+    
 
       return  (<div key={tag} className="col-sm-6 col-md-4 col-lg-3 tag-page-list-item">
                     <div className={"tag-cell"}>
                       <Link target="_blank" className="tag-page-list-item-link" to={url}  key={tag}>
-                        <center>{itemText}</center>
+                        <FileCellTitle str={itemText}/>
                         <LoadingImage isThumbnail 
                                       className="tag-page-thumbnail" fileName={tag} 
                                       mode={this.props.mode} 

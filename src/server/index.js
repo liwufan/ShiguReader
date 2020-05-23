@@ -50,6 +50,8 @@ const isProduction = process.argv.includes("--production");
 
 const logger = require("./logger");
 
+const searchByTagAndAuthor = require("./models/search");
+
 
 //set up json DB
 const zipInfoDb = require("./models/zipInfoDb");

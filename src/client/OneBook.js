@@ -28,10 +28,13 @@ const MIN_WIDTH = 400;
 const userConfig = require('@config/user-config');
 const clientUtil = require("./clientUtil");
 const { getDir, getBaseName, isMobile, getFileUrl, sortFileNames } = clientUtil;
+const namePicker = require("../human-name-picker");
+
 
 const NO_TWO_PAGE = "no_clip";
 const TWO_PAGE_LEFT = "left";
 const TWO_PAGE_RIGHT = "right";
+
 
 export default class OneBook extends Component {
   constructor(props) {
@@ -546,11 +549,11 @@ export default class OneBook extends Component {
   }
 
   renderTags(){
-    const fn = getBaseName(this.state.path);
-    const dirName = getBaseName(getDir(this.state.path));
+    const fn = getBaseName(this.getTextFromQuery());
+    const dirName = getBaseName(getDir(this.getTextFromQuery()));
     const result = nameParser.parse(fn);
     let tagDivs;
-    let tags;
+    let Alltags = [];
     let author;
     let originalTags;
     let group;
@@ -560,30 +563,33 @@ export default class OneBook extends Component {
       author =  result.author;
       group = result.group;
       originalTags = result.tags||[];
-      tags = originalTags;
       authors = result.authors;
 
-      if(authors){
-        tags = tags.concat(group, authors);
-      } else {
-        if(author && group && group !== author){
-          tags = tags.concat(group);
-        }
-        if(author){
-          tags = tags.concat(author);
-        }
+      if(group){
+        Alltags.push(group);
       }
+
+      if(authors){
+        Alltags = Alltags.concat(authors);
+      } else if(author){
+        Alltags.push(author);
+      }
+
+      Alltags = Alltags.concat(originalTags);
     }
 
-    if(fn.includes(dirName)){
-      tags = tags || [];
-      tags.push(dirName);
+    //the folder name can be be the author name
+    if(fn.includes(dirName) && !author){
+      Alltags.push(dirName);
     }
 
-    tags = tags || [];
-    tags = _.uniq(tags);
+    
+    if(this.hasMusic()){
+      Alltags = Alltags.concat(namePicker.pick(fn));
+    }
+    Alltags = _.uniq(Alltags);
 
-    tagDivs = tags.map( tag => {
+    tagDivs = Alltags.map( tag => {
       let url;
       if(authors && authors.includes(tag)){
         url = clientUtil.getAuthorLink(tag);
@@ -662,6 +668,8 @@ export default class OneBook extends Component {
                   <center style={{paddingTop: "200px"}}> 
                     <div className="alert alert-warning col-6" role="alert" > No image or music file </div>
                     {bookTitle}
+                    {this.renderTags()}
+                    {this.renderToolbar()}
                   </center>
                 </h3>);
       } else {

@@ -48,13 +48,6 @@ export default class Pagination extends Component {
       return Math.ceil(totalItemNum/itemPerPage);
     }
   
-    getSafePage (page) {
-      if (Number.isNaN(page)) {
-        page = this.props.currentPage
-      }
-      return Math.min(Math.max(page, 1), this.getTotalPage());
-    }
-  
     render(){
       const {
         currentPage,
@@ -66,7 +59,7 @@ export default class Pagination extends Component {
   
       const {textValue} = this.state;
   
-      const BUFFER_SIZE = window.screen.width < 750? 2 : 4; //the items will 1 + BUFFER_SIZE*2
+      const BUFFER_SIZE = window.screen.width < 750? 2 : 5; //the items will 1 + BUFFER_SIZE*2
       const totalPage = this.getTotalPage();
   
       if(totalPage <= 1){
@@ -123,11 +116,13 @@ export default class Pagination extends Component {
         <div className="page-jump">
           <input
             type='text'
-            value={textValue||currentPage}
+            value={textValue}
             onKeyPress={e => {
               if (e.which === 13 || e.keyCode === 13) {
                 //enter key
                 this.onChange(parseInt(textValue));
+                e.preventDefault();
+                e.stopPropagation();
               }
             }}
   
