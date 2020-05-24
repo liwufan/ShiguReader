@@ -17,9 +17,18 @@ const { isVideo } = util;
 import Accordion from './subcomponent/Accordion';
 const queryString = require('query-string');
 
+const Constant = require("@common/constant");
+
+const { MODE_TAG,
+        MODE_AUTHOR,
+        MODE_SEARCH,
+        MODE_EXPLORER} = Constant;
+
 
 const BY_YEAR = "by year";
 const BY_QUARTER = "by quarter";
+const BY_MONTH = "by month";
+const BY_DAY = "by day";
 
 function parse(str){
     return nameParser.parse(getBaseName(str));
@@ -55,16 +64,49 @@ function renderTable(labels, values){
     );
 }
 
+const VALUE_COUNT = "value: count";
+const VALUE_FILESIZE = "value: file size in MB";
+
+const BY_MTIME = "by mtime";
+const BY_TAG_TIME = "by tag time";
+
+
+
 export default class ChartPage extends Component {
     constructor(prop) {
         super(prop);
         this.failedTimes = 0;
-        this.state = {fileType: "compressed", timeType: BY_YEAR};
+        this.state = {
+            fileType: "compressed", 
+            timeType: BY_YEAR,
+            timeSourceType: BY_TAG_TIME,
+            valueType: VALUE_COUNT
+        };
     }
 
     componentDidMount() {
         if(this.failedTimes < 3) {
-            Sender.post("/api/allInfo", {}, res => {
+            let api;
+            let body;
+            const mode = this.getMode();
+            if(mode === MODE_EXPLORER){
+                api = '/api/lsDir';
+                body = {
+                    dir: this.getTextFromQuery(),
+                    isRecursive: this.isRecursive()
+                }
+            }else if(mode){
+                api = "/api/search";
+                body = {
+                    text: this.getTextFromQuery(),
+                    mode: mode
+                }
+            }else{
+                api = "/api/allInfo";
+                body = {};
+            }
+
+            Sender.post(api, body, res => {
                 this.handleRes(res);
             });
 
@@ -79,9 +121,9 @@ export default class ChartPage extends Component {
 
     handleRes(res){
         if (!res.failed) {
-            let { fileToInfo } = res;
-            this.fileToInfo = fileToInfo || {};
-            this.files = _.keys(this.fileToInfo) || [];
+            let { fileToInfo, fileInfos, files } = res;
+            this.fileToInfo = fileInfos || fileToInfo || {};
+            this.files = files || _.keys(this.fileToInfo) || [];
         }else{
             this.failedTimes++;
         }
@@ -93,20 +135,39 @@ export default class ChartPage extends Component {
         return this.res && this.res.failed;
     }
 
+    getMode(props){
+        const _props = props || this.props;
+        const obj = queryString.parse(_props.location.search);
+
+        if(obj.a){
+            return MODE_AUTHOR;
+        }else if(obj.p){
+            return MODE_EXPLORER;
+        }else if(obj.t){
+            return MODE_TAG;
+        }else if(obj.s){
+            return MODE_SEARCH;
+        }
+    }
+
     getTextFromQuery(props) {
         //may allow tag author in future
         const _props = props || this.props;
-        return queryString.parse(_props.location.search)["p"] ||  "";
+        const obj = queryString.parse(_props.location.search);
+        return obj.a || obj.p || obj.t || obj.s ||  "";
+    }
+
+    isRecursive(props) {
+        //may allow tag author in future
+        const _props = props || this.props;
+        const obj = queryString.parse(_props.location.search);
+        return obj.isRecursive;
     }
 
     getFilterFiles(){
-        const func =  this.isShowingVideoChart()? isVideo : isCompress;
-        const fp = this.getTextFromQuery();
+        const fileTypeFilter =  this.isShowingVideoChart()? isVideo : isCompress;
         const result = (this.files || []).filter(e => {
-            if(fp && !e.startsWith(fp)){
-                return false;
-            }
-            return func(e);
+            return fileTypeFilter(e);
         });
         return result;
     }
@@ -135,8 +196,10 @@ export default class ChartPage extends Component {
 
 
         const index = keys.indexOf("etc");
-        keys.splice(index, 1);
-        values.splice(index, 1)
+        if(index > -1){
+            keys.splice(index, 1);
+            values.splice(index, 1)
+        }
         data.labels = keys;
 
         data.datasets = [{
@@ -170,20 +233,43 @@ export default class ChartPage extends Component {
     }
 
     rendeTimeChart(){
-        const { timeType } = this.state;
+        const { timeType, valueType, timeSourceType } = this.state;
+        const byTime = {};
 
-        const byTime = _.countBy(this.getFilterFiles(), e=> {
+        this.getFilterFiles().forEach(e=> {
             const fileInfo = this.fileToInfo[e];
-            let aboutTimeA = nameParser.getDateFromParse(getBaseName(e));
-            aboutTimeA = aboutTimeA && aboutTimeA.getTime();
-            aboutTimeA = aboutTimeA || fileInfo.mtime;
-
+            //todo use choose use string time or only mtime
+            let aboutTimeA;
+            if(timeSourceType === BY_TAG_TIME){
+                aboutTimeA = nameParser.getDateFromParse(getBaseName(e));
+                aboutTimeA = aboutTimeA && aboutTimeA.getTime();
+                aboutTimeA = aboutTimeA || fileInfo.mtime;
+            }else{
+                aboutTimeA = fileInfo.mtime;
+            }
+   
             const t  = new Date(aboutTimeA);
             const month = t.getMonth();
             const quarter = Math.floor(month/3)+1;
 
-            let tLabel = timeType === BY_QUARTER? `${t.getFullYear()}-Q${quarter} `: t.getFullYear();
-            return tLabel;
+            let tLabel;
+            if(timeType === BY_DAY){
+                tLabel = `${t.getFullYear()}-${t.getMonth()+1}-${t.getDate()}`;
+            }else if(timeType === BY_QUARTER){
+                tLabel = `${t.getFullYear()}-Q${quarter}`;
+            }else if(timeType === BY_MONTH){
+                tLabel = `${t.getFullYear()}-${t.getMonth()+1}`;
+            }else{
+                tLabel = t.getFullYear();;
+            }
+
+            if(valueType === VALUE_COUNT){
+                byTime[tLabel] = byTime[tLabel] || 0;
+                byTime[tLabel]++;
+            }else if(valueType === VALUE_FILESIZE){
+                byTime[tLabel] = byTime[tLabel] || 0;
+                byTime[tLabel] += (fileInfo.size||0) / 1024 /1024; //byte to MB
+            }
         });
 
         const data = {};
@@ -199,28 +285,41 @@ export default class ChartPage extends Component {
             data:  values
           }];
 
-        const TIME_OPITIONS = [BY_YEAR, BY_QUARTER]
+        const TIME_OPITIONS = [BY_YEAR, BY_QUARTER, BY_MONTH, BY_DAY];
+        const VALUE_OPTIONS = [VALUE_COUNT, VALUE_FILESIZE];
+        const TIME_SOURCE_OPTIONS = [BY_MTIME, BY_TAG_TIME]
 
           return (
             <div className="individual-chart-container">
-             <RadioButtonGroup 
+                <RadioButtonGroup 
                             className="chart-radio-button-group"
-                            checked={TIME_OPITIONS.indexOf(this.state.timeType)} 
+                            checked={TIME_OPITIONS.indexOf(timeType)} 
                             options={TIME_OPITIONS} 
                             onChange={this.onTimeTypeChange.bind(this)}/>
+                <RadioButtonGroup 
+                            className="chart-radio-button-group"
+                            checked={VALUE_OPTIONS.indexOf(valueType)} 
+                            options={VALUE_OPTIONS} 
+                            onChange={this.onValueTypeChange.bind(this)}/>
+                <RadioButtonGroup 
+                            className="chart-radio-button-group"
+                            checked={TIME_SOURCE_OPTIONS.indexOf(timeSourceType)} 
+                            options={TIME_SOURCE_OPTIONS} 
+                            onChange={this.onTimeSourceTypeChange.bind(this)}/>
 
-              <Line
-                className="type-time-chart"
-                data={data}
-                width={800}
-                height={200}
-                options={{
-                    maintainAspectRatio: false,
-                    legend: {
-                        position: "right"
-                    }
-                }}
-              />
+                <div>
+                    <Line
+                    className="type-time-chart"
+                    data={data}
+                    width={800}
+                    height={300}
+                    options={{
+                        maintainAspectRatio: false,
+                        legend: {
+                            position: "right"
+                        }
+                    }}/>
+              </div>
             </div>
           );
     }
@@ -362,10 +461,22 @@ export default class ChartPage extends Component {
         });
     }   
 
+    onValueTypeChange(e){
+        this.setState({
+            valueType: e
+        });
+    }   
+
+    onTimeSourceTypeChange(e){
+        this.setState({
+            timeSourceType: e
+        });
+    }   
+
 
     render(){
         document.title = "Chart"
-        const too_few = 30;
+        const too_few = 1; // 30;
 
         const FILE_OPTIONS = [
           "video",
@@ -374,8 +485,20 @@ export default class ChartPage extends Component {
 
         const files = this.getFilterFiles();
         const {fileType} = this.state;
+        const mode = this.getMode();
 
-        const filePath = <div>{this.getTextFromQuery() }</div>; 
+        let str = this.getTextFromQuery();
+        if(this.isRecursive()){
+            str = `${str} And Subfolder's Files`
+        } else if (mode === MODE_AUTHOR){
+            str = `Author: ${str}`
+        } else if (mode === MODE_TAG){
+            str = `Tag: ${str}`
+        } else if (mode === MODE_SEARCH){
+            str = `Search: ${str}`
+        }
+
+        const filePath = <div>{str}</div>; 
 
         const radioGroup = <RadioButtonGroup 
                             className="chart-radio-button-group"
