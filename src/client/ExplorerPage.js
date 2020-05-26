@@ -166,7 +166,7 @@ export default class ExplorerPage extends Component {
     }
 
     componentWillReceiveProps(nextProps){
-        if(_.isString(nextProps.filterText)){
+        if(_.isString(nextProps.filterText) && nextProps.filterText !== this.state.filterText){
             this.handlePageChange(1);
 
             this.setState({
@@ -514,6 +514,7 @@ export default class ExplorerPage extends Component {
 
         try {
             files = this.sortFiles(files, sortOrder);
+            videos = this.sortFiles(videos, sortOrder);
         }catch(e){
             console.error(e);
         }
@@ -940,7 +941,7 @@ export default class ExplorerPage extends Component {
     }
 
     renderSortHeader(){
-        if(this.getMode() === MODE_HOME || this.getFilteredFiles().length === 0){
+        if(this.getMode() === MODE_HOME){
             return;
         }
 
