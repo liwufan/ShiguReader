@@ -92,10 +92,6 @@ module.exports.minifyOneFile = async function(filePath){
         //mkdir for output
         if(!(await isExist(minifyOutputPath))){
             const mdkirErr = await pfs.mkdir(minifyOutputPath, { recursive: true});
-            if(mdkirErr){
-                logFail(filePath, "cannot create output folder");
-                return;
-            }
         }
 
         //do a brand new extract 
