@@ -50,6 +50,8 @@
 
 # 没有nodejs,麻烦先安装nodejs https://nodejs.org/
 
+# 到[imagemagick](https://imagemagick.org)下载安装imagemagick。
+
 # 把代码clone或者github右上角下载到本地
 # 建议所放的硬盘至少还有10GB的空间。因为本程序需要缓存。
 git clone https://github.com/hjyssg/ShiguReader
@@ -101,8 +103,7 @@ npm run dev
 # 如果你对页面加载速度不满意，前往Admin页面Pregenerate Thumbnail。可以大幅度提高页面加载速度。
 
 # 如果用了一段时间，缓存占了太多空间。
-# 手动去到admin页面点clean cache清除缓存。
-# 尽量不要在文件夹直接删掉整个缓存文件夹，那样之前生成的缩略图就全部没了。
+# 手动去到admin页面点clean cache清除缓存。或者直接删除cache文件夹也没事。
 ```
 
 ##### 注意事项
@@ -120,7 +121,6 @@ ShiguReader的使用场景是LAN(局域网)，开放到外网非常不安全。
 
 [介绍视频](https://www.bilibili.com/video/BV1pi4y147Gu?from=search&seid=13429520178852889848/)     
 现在有的漫画图片明显太大。比如上次下了一本24页640MB，关键画质并没有比1本30MB高出多少。为此添加了压缩包内图片压缩功能。
-自行手动到[imagemagick](https://imagemagick.org)下载安装imagemagick。
 安装后，自行确认可否在cmd使用magick命令。然后就可以通过网页来启动压缩程序了。
 压缩完的文件默认在workspace\image_convert_cache。
 

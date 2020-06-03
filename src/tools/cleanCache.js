@@ -4,8 +4,7 @@ const rimraf = require("./rimraf");
 
 let counter = 0;
 const pathUtil = require("../server/pathUtil");
-const {  isSub } = pathUtil;
-const serverUtil = require("../server/serverUtil");
+const { isSub } = pathUtil;
 
 const show_error = false;
 
@@ -13,22 +12,12 @@ function del(file, cachePath){
     if(isSub(cachePath, file)){
         rimraf(file, (err) =>{
             if(err){
-                // try{
-                //     const stat = fs.statSync(file);
-                //     if(stat.isFile()){
-                //         fs.unlinkSync(file);
-                //     } else {
-                //         fs.rmdirSync(file);
-                //     }
-                // }catch(e){
-                //     console.error(file, e);
-                // }
                 show_error && console.error("[cache clean]", err);
             }
         });
 
         counter++;
-        if(counter % 20 === 0){
+        if(counter % 500 === 0){
             console.log("[cache clean] delete:", counter);
         }
     } else {
@@ -37,6 +26,7 @@ function del(file, cachePath){
 }
 
 function cleanCache(cachePath, config){
+    config = config || {};
     counter = 0
     if(!fs.existsSync(cachePath)){
         err = fs.mkdir(cachePath, (err) => {
@@ -55,41 +45,7 @@ function _clean(cachePath, config){
     folders1.forEach(fPath => {
         try {
             fPath = path.resolve(cachePath, fPath);
-            const stat = fs.statSync(fPath);
-            if (stat.isFile()) {
-                del(fPath, cachePath);
-            }else if(stat.isDirectory()){
-                const fileName = path.basename(fPath);
-                if(config && config.allowFileNames && !config.allowFileNames.includes(fileName)){
-                    del(fPath, cachePath);
-                }
-                let subfiles = fs.readdirSync(fPath);
-                if(subfiles.length === 0){
-                    del(fPath, cachePath);
-                } else {
-                    const thumbnail = serverUtil.chooseThumbnailImage(subfiles);
-                    //only thumbnail
-                    for(let ii = 0; ii < subfiles.length; ii++){
-                        const subfileName = subfiles[ii];
-                        const filePath = path.resolve(fPath, subfileName);
-    
-                        //compress first image to standard thumbnail
-                        if(subfileName === thumbnail){
-                            if(config.minized){
-                                const thumbnailGenerator = require("./thumbnailGenerator");
-                                thumbnailGenerator(fPath, subfileName, (err, info) => { 
-                                    if(!err){
-                                        del(filePath, cachePath);
-                                    }
-                                 });
-                            }
-                        }else{
-                            //del the rest
-                            del(filePath, cachePath);
-                        }
-                    }
-                }
-            }
+            del(fPath, cachePath);
         }catch(e){
             show_error && console.error("[cache clean] error",e);
         }

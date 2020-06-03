@@ -103,7 +103,7 @@ const updateFileDb = function(filePath){
     let tags = _.uniq(tags1.concat(nameTags, musisTags));
 
     data.tags = tags.join(sep);
-    data.author = (temp.authors && temp.authors.join(sep)) || temp.author || "";
+    data.authors = (temp.authors && temp.authors.join(sep)) || temp.author || "";
     data.group = temp.group;
 
     if(has(filePath)){
@@ -138,15 +138,15 @@ module.exports.deleteFromDb = function(path){
 
 //---------------------------------------------cache db---------------------
 
-module.exports.initCacheDb = function(pathes, infos){
-    (pathes||[]).forEach(p => {
-        const fp =  getDirName(p);
-        cacheDb.folderToFiles[fp] = cacheDb.folderToFiles[fp] || [];
-        cacheDb.folderToFiles[fp].push(path.basename(p));
-    });
+// module.exports.initCacheDb = function(pathes, infos){
+//     (pathes||[]).forEach(p => {
+//         const fp =  getDirName(p);
+//         cacheDb.folderToFiles[fp] = cacheDb.folderToFiles[fp] || [];
+//         cacheDb.folderToFiles[fp].push(path.basename(p));
+//     });
     
-    cacheDb.cacheFileToInfo = infos;
-}
+//     cacheDb.cacheFileToInfo = infos;
+// }
 
 //  outputPath is the folder name
 module.exports.getCacheFiles = function(outputPath) {
@@ -176,9 +176,9 @@ module.exports.getCacheOutputPath = function (cachePath, zipFilePath) {
         console.warn("[getCacheOutputPath] no stat", zipFilePath);
     } else {
         const mdate = new Date(stat.mtimeMs);
-        const mstr = dateFormat(mdate, "yyyy-mm-dd");
+        const mstr = mdate.getTime();
         const fstr = (stat.size/1000/1000).toFixed();
-        outputFolder = outputFolder+ `${mstr} ${fstr} `;
+        outputFolder = outputFolder+ `${mstr} ${fstr}`;
     }
     return path.join(cachePath, outputFolder);
 }
