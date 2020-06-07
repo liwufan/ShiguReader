@@ -177,29 +177,43 @@ function convertYearString(str) {
     return y;
 }
 
+
+const dreg1 = /\d{6}/;
+const dreg2 = /\d{2}-\d{2}-\d{2}/;
+const dreg3 = /\d{4}年\d{1,2}月\d{1,2}日/;
+const dreg4 = /\d{4}年\d{1,2}月号/;
+
+
 function isStrDate(str) {
-    if (str && str.length === 6) {
+    if (str && str.length === 6 && str.match(dreg1)) {
         const y = parseInt(str.slice(0, 2));
         const m = parseInt(str.slice(2, 4));
         const d = parseInt(str.slice(4, 6));
 
         let invalid = y > 30 && y < 80;
         invalid = invalid || (m < 0 || m > 12);
-        invalid = invalid || (d < 0 || d > 30);
+        invalid = invalid || (d < 0 || d > 31);
         return !invalid;
+    }else if(str.match(dreg2)){
+        return true;
+    }else if(str.match(dreg3)){
+        return true;
+    }else if(str.match(dreg4)){
+        return true;
     }
 
     return isFullStrDate(str);
 }
 
-const fullDateReg = /\d{4}-\d{1,2}-\d{2}/
+const fullDateReg = /\d{4}-\d{1,2}-\d{2}/;
+
 function isFullStrDate(str){
     //e.g 2014-04-01
     return !!(str && str.match(fullDateReg));
 }
 
 function getAuthorName(str){
-    var macthes = str.match(/(.*?)\s*\((.*?)\)/);
+    var macthes = str.match(/^(.*?)\s*\((.*?)\)$/);
     if(macthes && macthes.length > 0){
         return {
             group: macthes[1].trim(),
@@ -270,6 +284,8 @@ function getTag(str, pMacthes, author){
     return tags;
 }
 
+const DLsiteReg = /RJ\d+/;
+
 function parse(str) {
     if (!str || localCache[str] === "NO_EXIST") {
       return null;
@@ -303,7 +319,10 @@ function parse(str) {
             const nextCharIndex = str.indexOf(bMacthes[ii]) + bMacthes[ii].length + 1; 
             const nextChar = str[nextCharIndex];
 
-            if (isStrDate(token)) {
+            if(token.match(DLsiteReg)){
+                //DLsite tag is not author
+                continue;
+            }else if (isStrDate(token)) {
                 //e.g 190214
                 dateTag = token;
             } else if (not_author_but_tag_table[tt]){
@@ -327,7 +346,15 @@ function parse(str) {
         }
     }
 
+    const tseperator = /,|、/;
     tags = tags.concat(getTag(str, pMacthes, author));
+    let tempTags = [];
+    tags.forEach(t => {
+        t.split(tseperator).forEach(token => {
+            tempTags.push(token);
+        })
+    })
+    tags = tempTags;
     tags = tags.filter(e => e.length > 1);
     if(!author && !group && tags.length === 0){
         localCache[str] = "NO_EXIST";
@@ -342,8 +369,8 @@ function parse(str) {
     })
     title = title.trim();
 
-    
-    const authors = author && author.split(/,|、/).map(e => e.trim()) ;
+    const seperator = /,|、|&|＆/;
+    const authors = author && author.split(seperator).map(e => e.trim()) ;
 
     const result = {
        dateTag, author, tags, comiket, type, group, title, authors
