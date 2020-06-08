@@ -1,10 +1,11 @@
 const config = require("./name-parser-config");
 const same_tags = config.same_tags;
+const same_tag_regs_table = config.same_tag_regs_table;
 const not_author_but_tag = config.not_author_but_tag;
 const char_names = require("./character-names");
 //https://stackoverflow.com/questions/5582574/how-to-check-if-a-string-contains-text-from-an-array-of-substrings-in-javascript
 const char_name_regex = new RegExp(char_names.join("|"));
-
+const not_author_but_tag_regex =  new RegExp(not_author_but_tag.join("|"), "i");
 
 const book_types = [
     "同人音声",
@@ -15,69 +16,70 @@ const book_types = [
     "一般コミック",
     "ゲームCG",
     "画集"
-]
+];
+
+const book_type_regex = new RegExp(book_types.join("|"), "i");
 
 const localCache = {};
 
+const comicket_reg = /^C\d{2}$/i;
+const comic_star_reg = /^COMIC1☆\d{1,2}$/i;
+const love_live_event_reg = /^僕らのラブライブ!/i;
+const comitea_reg = /^コミティア.*\d/;
+const sankuri_reg = /^サンクリ.*\d+/;
+const reitaisai_reg = /^例大祭.*\d+/;
+const tora_reg = /^とら祭り.*\d+/;
+const komitore_reg = /^こみトレ.*\d+/;
+const reg_list = [comicket_reg, comic_star_reg, love_live_event_reg,
+                 comitea_reg, sankuri_reg, reitaisai_reg,
+                 tora_reg, komitore_reg, /みみけっと.*\d+/, 
+                 /コミトレ.*\d+/, /FF\d+/, /iDOL SURVIVAL.*\d/i, 
+                 /SC\d+/, /コミコミ.*\d/, /ふたけっと.*\d/,
+                /ファータグランデ騎空祭/, /歌姫庭園/, /紅楼夢/];
+
+function belongToEvent(e){
+    return reg_list.some(reg => e.match(reg));
+}
+
 function init(){
-    let comiket_tags = [];
-    let comic_star_tags = [];
-    for(let index = 65; index < 100; index++){
-        comiket_tags.push(`C${index}`);
-    }
-    
-    comic_star_tags.push("COMIC1");
-    for(let index = 2; index < 20; index++){
-        comic_star_tags.push(`COMIC1☆${index}`)
-    }
-
-    let all_comic_tags = comiket_tags.concat(comic_star_tags);
-
-    const all_comic_tags_table = {}
-    all_comic_tags.forEach(e => {
-        all_comic_tags_table[e.toLowerCase()] = true;
-    });
-
-    const book_type_table = {};
-    book_types.forEach(e => {
-        book_type_table[e.toLowerCase()] = true;
-    })
-
-    const not_author_but_tag_table = {};
-    not_author_but_tag.forEach(e => {
-        not_author_but_tag_table[e.toLowerCase()] = true;
-    })
-
-
     //--------------------------------------------
-    const convert_table = {};
+    const tag_convert_table = {};
     same_tags.forEach(row => {
         for(let ii = 1; ii < row.length; ii++){
-            convert_table[row[ii]] = row[0];
+            tag_convert_table[row[ii]] = row[0];
         }
     });
 
+    const same_tag_reg_to_common_name = {};
+    const same_tag_reg_array = [];
+    for(let tag in same_tag_regs_table){
+        if(same_tag_regs_table.hasOwnProperty(tag)){
+            const reg_array = same_tag_regs_table[tag];
+
+            const big_pre_join = reg_array.map(e =>e.source)
+            const r =  new RegExp(big_pre_join.join("|"), 'i')
+
+            same_tag_reg_array.push(r);
+            same_tag_reg_to_common_name[r] = tag;
+        }
+    }
+
+    same_tag_reg_array.sort((r1, r2) => {
+        return r2.toString().length - r1.toString().length
+    });
 
     //------------------------------------
     return {
-        all_comic_tags,
-        all_comic_tags_table,
-        book_type_table,
-        not_author_but_tag_table,
-        comiket_tags,
-        comic_star_tags,
-        convert_table
+        tag_convert_table,
+        same_tag_reg_to_common_name,
+        same_tag_reg_array
     }
 }
 
 const {
-    all_comic_tags,
-    all_comic_tags_table,
-    not_author_but_tag_table,
-    book_type_table,
-    comiket_tags,
-    comic_star_tags,
-    convert_table
+    tag_convert_table,
+    same_tag_reg_to_common_name,
+    same_tag_reg_array
 } = init();
 
 
@@ -101,7 +103,7 @@ function getDateFromTags(tags){
       return null;
   }
 
-  const _tags =  tags.filter(e => all_comic_tags.includes(e));
+  const _tags =  tags.filter(e => belongToEvent(e));
   let tag = _tags && _tags[0];
   let result = null;
   let num;
@@ -110,7 +112,7 @@ function getDateFromTags(tags){
   if(tag){
     if (tag_to_date_table[tag]) {
         result = tag_to_date_table[tag];
-    } else if(comiket_tags.includes(tag)) {
+    } else if(tag.match(comicket_reg)) {
         tag = tag.replace("C", "");
         num = parseInt(tag);
         year = Math.floor(num /2) + 1971;
@@ -119,7 +121,7 @@ function getDateFromTags(tags){
         const day = isSummer? 10: 28;
         result = new Date(year, month, day);
         tag_to_date_table[tag] = result;
-    } else if(comic_star_tags.includes(tag)) {
+    } else if(tag.match(comic_star_reg)) {
         tag = tag.replace("COMIC1☆", "");
         num = parseInt(tag);
         if(num <= 10){
@@ -239,11 +241,11 @@ function match(reg, str){
 function getTypeAndComiket(tags, group){
     let comiket;
     let type;
+
     tags.forEach(e => {
-        e = e.toLowerCase();
-        if(all_comic_tags_table[e]){
+        if(belongToEvent(e)){
             comiket = e;
-        }else if(book_type_table[e]){
+        }else if(e.match(book_type_regex)){
             type = e;
         }
     })
@@ -261,26 +263,44 @@ function getTypeAndComiket(tags, group){
     }
 }
 
-function getTag(str, pMacthes, author){
-    let tags = [];
+function getTag(tags, pMacthes, author){
+    tags = tags || [];
     if (pMacthes && pMacthes.length > 0) {
         tags = tags.concat(pMacthes);
-        tags = tags.filter(e=> {return !isOnlyDigit(e) && !isStrDate(e)   });
+        tags = tags.filter(e=> { return !isOnlyDigit(e) && !isStrDate(e) });
     }
 
     if(author && tags.indexOf(author) >= 0){
         tags.splice(tags.indexOf(author), 1);
     }
 
-    const names = char_name_regex && str.match(char_name_regex);
-    names && names.forEach(e => {
-        tags.push(e);
+    const tseperator = /,|、/;
+    const tempTags = [];
+    tags.forEach(t => {
+        t.split(tseperator).forEach(token => {
+            tempTags.push(token);
+        })
     })
+    tags = tempTags;
 
     tags = tags.map(e => {
-        return convert_table[e] || e;
+        if(tag_convert_table[e]){
+            return tag_convert_table[e]
+        }
+
+        for(let ii = 0; ii < same_tag_reg_array.length; ii++){
+            const r = same_tag_reg_array[ii];
+            if(e.match(r)){
+                return same_tag_reg_to_common_name[r]
+            }
+        }
+    
+        return e;
     })
 
+    tags = tags
+        .map(e => e.trim())
+        .filter(e => e.length > 1);
     return tags;
 }
 
@@ -319,13 +339,15 @@ function parse(str) {
             const nextCharIndex = str.indexOf(bMacthes[ii]) + bMacthes[ii].length + 1; 
             const nextChar = str[nextCharIndex];
 
-            if(token.match(DLsiteReg)){
+            if(belongToEvent(token)){
+                tags.push(token);
+            }else if(token.match(DLsiteReg)){
                 //DLsite tag is not author
                 continue;
             }else if (isStrDate(token)) {
                 //e.g 190214
                 dateTag = token;
-            } else if (not_author_but_tag_table[tt]){
+            } else if (tt.match(not_author_but_tag_regex)){
                 //e.g pixiv is not author
                 tags.push(token);
             } else if (nextChar === "." || nextCharIndex >= str.length){
@@ -335,7 +357,7 @@ function parse(str) {
             } else if(!author) {
                 //  [真珠貝(武田弘光)]
                 const temp = getAuthorName(token);
-                if(!not_author_but_tag_table[temp.name]){
+                if(temp.name && !temp.name.match(not_author_but_tag_regex)){
                     //e.g よろず is not author
                     author = temp.name;
                 }
@@ -346,22 +368,17 @@ function parse(str) {
         }
     }
 
-    const tseperator = /,|、/;
-    tags = tags.concat(getTag(str, pMacthes, author));
-    let tempTags = [];
-    tags.forEach(t => {
-        t.split(tseperator).forEach(token => {
-            tempTags.push(token);
-        })
-    })
-    tags = tempTags;
-    tags = tags.filter(e => e.length > 1);
+    tags = getTag(tags, pMacthes, author);
+    let { comiket, type } = getTypeAndComiket(tags, group);
+
+    if(comiket){
+        tags = tags.filter(e => e != comiket);
+    }
+
     if(!author && !group && tags.length === 0){
         localCache[str] = "NO_EXIST";
         return;
     }
-
-    const { comiket, type } = getTypeAndComiket(tags, group);
 
     let title = str;
     (bMacthes||[]).concat( pMacthes||[], tags||[], [/\[/g, /\]/g, /\(/g, /\)/g ]).forEach(e => {
@@ -371,6 +388,11 @@ function parse(str) {
 
     const seperator = /,|、|&|＆/;
     const authors = author && author.split(seperator).map(e => e.trim()) ;
+
+    const names = char_name_regex && title.match(char_name_regex);
+    names && names.forEach(e => {
+        tags.push(e);
+    })
 
     const result = {
        dateTag, author, tags, comiket, type, group, title, authors
@@ -396,7 +418,6 @@ function parseMusicTitle(str){
 
 module.exports.parse = parse;
 module.exports.isOnlyDigit = isOnlyDigit;
-module.exports.all_comic_tags = all_comic_tags;
 module.exports.getDateFromTags = getDateFromTags;
 module.exports.getDateFromParse = getDateFromParse;
 module.exports.parseMusicTitle = parseMusicTitle;
