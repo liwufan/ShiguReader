@@ -33,7 +33,7 @@ const { isImage, isCompress, isMusic, arraySlice,
 
 //set up path
 const rootPath = pathUtil.getRootPath();
-const { cache_folder_name, thumbnail_folder_name } = userConfig
+const { cache_folder_name, thumbnail_folder_name, view_img_folder } = userConfig
 const cachePath = path.join(rootPath, cache_folder_name);
 const thumbnailFolderPath = path.join(rootPath, thumbnail_folder_name);
 global.cachePath = cachePath;
@@ -111,7 +111,7 @@ async function init() {
     await mkdir(thumbnailFolderPath);
     await mkdir(cachePath);
 
-    let { home_pathes, path_will_scan } = await getHomePath();
+    let { home_pathes, path_will_scan, path_will_watch } = await getHomePath();
     global.path_will_scan = path_will_scan;
 
     const cleanCache = require("../tools/cleanCache");
@@ -121,36 +121,29 @@ async function init() {
 
     let beg = (new Date).getTime()
     const results = await fileiterator(path_will_scan, { 
-        filter: shouldWatchForOne, 
+        filter: shouldWatchForNormal, 
         doLog: true
     });
     results.pathes = results.pathes.concat(home_pathes);
     let end1 = (new Date).getTime();
-    console.log(`${(end1 - beg)/1000}s  to read local dirs`);
+    console.log(`${(end1 - beg)/1000}s to read local dirs`);
+
+
     console.log("Analyzing local files");
     db.initFileToInfo(results.infos);
     console.log("There are", getAllFilePathes().length, "files");
-
-    // console.log("----------scan cache------------");
-    // const cache_results = await fileiterator([cachePath], { 
-    //     filter: shouldWatchForCache, 
-    //     doLog: true
-    // });
-
-    // let end2 = (new Date).getTime();
-    // console.log(`${(end2 - end1)/1000}s  to read cache dirs`);
-    // db.initCacheDb(cache_results.pathes, cache_results.infos);
-
+    let end3 = (new Date).getTime();
+    console.log(`${(end3 - end1)/1000}s to analyze local files`);
 
     console.log("----------scan thumbnail------------");
+    end1 = (new Date).getTime();
     let thumbnail_pathes = await pfs.readdir(thumbnailFolderPath);
     thumbnail_pathes = thumbnail_pathes.filter(isImage).map(e => path.resolve(thumbnailFolderPath, e));
-
-    let end3 = (new Date).getTime();
+    end3 = (new Date).getTime();
     console.log(`${(end3 - end1)/1000}s  to read thumbnail dirs`);
     initThumbnailDb(thumbnail_pathes);
 
-    setUpFileWatch(path_will_scan);
+    setUpFileWatch(path_will_watch);
 
     const machineLearning = require("./models/machineLearning");
     machineLearning.init();
@@ -202,16 +195,35 @@ function getThumbCount(){
     return _.keys(thumbnailDb).length;
 }
 
-function shouldWatchForOne(p){
+function getExt(p){
+    const ext = path.extname(p).toLowerCase();
+    //xxx NO.003 xxx is not meaningful extension
+    //extension string should be alphabet(may with digit), but not only digit
+    if(ext && /^\.[a-zA-z0-9]*$/.test(ext) && !/^\.[0-9]*$/.test(ext)){
+        return ext;
+    }else{
+        return "";
+    }
+}
+
+//this function which files will be scanned and watched by ShiguReader
+function shouldWatchForNormal(p){
     if(isHiddenFile(p)){
         return false;
     }
-    const ext = path.extname(p).toLowerCase();
-    return  !ext ||  isDisplayableInExplorer(ext);
+    const ext = getExt(p);
+    //not accurate, but performance is good. access each file is very slow
+    const isFolder = !ext; 
+    let result = isFolder  ||  isDisplayableInExplorer(ext);
+
+    if(view_img_folder){
+        result = result ||  isDisplayableInOnebook(ext)
+    }
+    return  result;
 }
 
-function shouldIgnoreForOne(p){
-    return !shouldWatchForOne(p);
+function shouldIgnoreForNormal(p){
+    return !shouldWatchForNormal(p);
 }
 
 function shouldIgnoreForCache(p){
@@ -222,8 +234,8 @@ function shouldWatchForCache(p){
     if(isHiddenFile(p)){
         return false;
     }
-    const ext = path.extname(p).toLowerCase();
-    return !ext ||  isDisplayableInOnebook(ext)
+    const ext = getExt(p);
+    return !ext ||  isDisplayableInOnebook(ext);
 }
 
 
@@ -232,7 +244,7 @@ function setUpFileWatch (path_will_scan){
     //watch file change 
     //update two database
     const watcher = chokidar.watch(path_will_scan, {
-        ignored: shouldIgnoreForOne,
+        ignored: shouldIgnoreForNormal,
         ignoreInitial: true,
         persistent: true,
         ignorePermissionErrors: true

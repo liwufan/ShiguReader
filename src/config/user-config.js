@@ -27,10 +27,6 @@ module.exports.thumbnail_folder_name = "thumbnails";
 
 module.exports.img_convert_cache = "image_convert_cache"
 
-//show one page, or show all pages at once
-//ipad iphone上面看漫画是一页一张图，还是一次显示全部整本的全部图片
-module.exports.onebook_only_image_per_page = true;
-
 //delete or move to recyle bin
 //删除操作是真的彻底删除还是丢进回收站
 module.exports.move_file_to_recyle = true;
@@ -71,3 +67,20 @@ module.exports.img_convert_min = 2.5*1024*1024; //in MB
 //参考资料:http://www.imagemagick.org/Usage/resize/#shrink
 //不必担心，会保持比例，高宽都低于规定的比例。
 module.exports.img_reduce_resolution_dimension = "2800x2800";
+
+//uses can view folder that has images as a zip
+//so users do not have zip their manga
+//But this may cause more Memory usage
+//可以阅读文件夹的图片，就不需要打包成zip
+//但可能用很多内存
+module.exports.view_img_folder = true;
+
+
+//global password
+//when set, user need to enter password to use ShiguReader
+//全局密码，设置以后用户必须输入密码才能打开网站
+module.exports.home_password = ""
+
+//do not display a zip if it has no image files or music files
+module.exports.filter_empty_zip = true;
+module.exports.filter_empty_zip = true;

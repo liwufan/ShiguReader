@@ -9,6 +9,7 @@
 
 ![screenshot-01](screenshot/01.png)
 ![screenshot-02](screenshot/02.png)
+![screenshot-02](screenshot/02.5.png)
 ![screenshot-03](screenshot/03.png)
 ![screenshot-04](screenshot/04.png)
 ![screenshot-05](screenshot/05.png)
@@ -33,6 +34,7 @@
 * 配色和旧版熊猫网的一模一样，亲切熟悉。
 * 服务器端支持windows和*nix。
 * 客户端支持除IE和Edge的主流浏览器。比如电脑的Chrome和iPad的safari。不需要USB接线，手机不需要安装任何东西，任意浏览器直接可以阅读。
+* 直接浏览文件夹的图片 <- New
 
 
 ### 支持格式
@@ -58,8 +60,8 @@
 git clone https://github.com/hjyssg/ShiguReader
 
 # 手动修改用户文件路径设置
-# 用任意文本编辑器手动修改src/path-config和src/config/user-config.js
-# path-config一定需要修改
+# 用任意文本编辑器手动修改src/path-config.ini和src/config/user-config.js
+# path-config.ini一定需要修改
 # user-config.js看情况
 
 ## 重要:windows用户必须的额外步骤：
@@ -137,13 +139,18 @@ docker run -d -p hostport:3000 -v comicpath:/data liwufan/shigureader
 有问题阅读 [docker配置说明](https://github.com/hjyssg/ShiguReader/blob/dev/dockerguide.md)
 
 
+##### NAS 使用方法
+
+[热心人总结的](https://github.com/hjyssg/ShiguReader/issues/90)
+
+
 ##### 和tamper monkey一起使用
     把EhentaiHighighliger.js添加到tamper monkey。
     在你上绅士网的时候，该脚本会通过与后端服务器通信。帮助你知道文件下载过与否。
 
 ##### FAQ
     问： 网页能打开, 但是文件夹打开是空的或者404？
-    答： 请认真检查path-config的地址有没有写错。
+    答： 请认真检查path-config.ini的地址有没有写错。
 
     问： 想问下如果想更新该如何做呢，只要重新克隆一份最新的覆盖就行了？还是说要再走一遍流程?   
     答： 如果是用git的话，拉(pull)最新的代码。重新修改一下用户配置，npm install 最后npm run dev。
@@ -163,7 +170,7 @@ docker run -d -p hostport:3000 -v comicpath:/data liwufan/shigureader
 漫画页面  
 enter: 全屏  
 AD和左右方向键: 翻页  
-+- 缩放图片 
++-: 缩放图片 
 
 ##### 认真看这个readme 还是有问题的话
 直接在github issue问

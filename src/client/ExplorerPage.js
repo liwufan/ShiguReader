@@ -12,9 +12,9 @@ import ErrorPage from './ErrorPage';
 import FileChangeToolbar from './subcomponent/FileChangeToolbar';
 import CenterSpinner from './subcomponent/CenterSpinner';
 const util = require("@common/util");
-const filesizeUitl = require('filesize');
 const queryString = require('query-string');
 import Pagination from './subcomponent/Pagination';
+import ItemsContainer from './subcomponent/ItemsContainer';
 import SortHeader from './subcomponent/SortHeader';
 import Breadcrumb from './subcomponent/Breadcrumb';
 import FileCellTitle from './subcomponent/FileCellTitle';
@@ -23,8 +23,8 @@ const nameParser = require('@name-parser');
 const classNames = require('classnames');
 const Constant = require("@common/constant");
 const clientUtil = require("./clientUtil");
-const { getDir, getBaseName, getPerPageItemNumber, isSearchInputTextTyping } = clientUtil;
-const { isVideo, isCompress } = util;
+const { getDir, getBaseName, getPerPageItemNumber, isSearchInputTextTyping, filesizeUitl } = clientUtil;
+const { isVideo, isCompress, isImage, isMusic } = util;
 const sortUtil = require("../common/sortUtil");
 const AdminUtil = require("./AdminUtil");
 
@@ -63,7 +63,7 @@ export default class ExplorerPage extends Component {
     }
 
     getNumPerPage(){
-        return this.state.noThumbnail? 40 :  getPerPageItemNumber();
+        return this.state.perPageItemNum; // this.state.noThumbnail? 40 :  this.state.perPageItemNum;
     }
 
     getInitState(reset){
@@ -74,6 +74,7 @@ export default class ExplorerPage extends Component {
         const showVideo = !!(parsed.showVideo === "true");
         
         return {
+            perPageItemNum: getPerPageItemNumber(),
             anchorSideMenu: false,
             pageIndex,
             isRecursive,
@@ -254,6 +255,8 @@ export default class ExplorerPage extends Component {
             this.author = "";
             this.fileInfos = {};
             this.thumbnails = {};
+            this.imgFolders = {};
+            this.imgFolderInfo = {};
             this.res = null;
             //init state
             this.setStateAndSetHash(this.getInitState(true));
@@ -263,7 +266,7 @@ export default class ExplorerPage extends Component {
 
     handleRes(res){
         if (!res.failed) {
-            let {dirs, tag, author, fileInfos, thumbnails, zipInfo, guessIfUserLike} = res;
+            let {dirs, tag, author, fileInfos, thumbnails, zipInfo, imgFolders, imgFolderInfo,  guessIfUserLike} = res;
             this.loadedHash = this.getTextFromQuery();
             this.fileInfos = fileInfos || {};
             const files = _.keys(this.fileInfos) || [];
@@ -275,7 +278,11 @@ export default class ExplorerPage extends Component {
             this.thumbnails = thumbnails || {};
             this.zipInfo = zipInfo || {};
             this.guessIfUserLike = guessIfUserLike || {};
+            this.imgFolders = imgFolders || {};
+            this.imgFolderInfo = imgFolderInfo || {};
             this.res = res;
+
+            this.allfileInfos = _.extend({}, this.fileInfos, this.imgFolderInfo);
 
             if(this.videoFiles.length > 0){
                 this.setStateAndSetHash({
@@ -334,15 +341,28 @@ export default class ExplorerPage extends Component {
         });
     }
 
-
     //comes from file db.
     //may not be reliable
     getFileSize(e){
+        if(this.imgFolderInfo[e]){
+            return this.imgFolderInfo[e].size;
+        }
         return (this.fileInfos[e] && this.fileInfos[e].size) || 0;
     }
 
+    getAllFileSize(files){
+        let totalSize = 0;
+        files.forEach(e => {
+            totalSize += this.getFileSize(e);
+        });
+        return totalSize;
+    }
+
     getPageNum(fp){
-       return +(this.zipInfo[fp] && this.zipInfo[fp].pageNum) || 0;
+        if(this.imgFolders[fp]){
+            return this.imgFolders[fp].filter(isImage).length;
+        }
+        return +(this.zipInfo[fp] && this.zipInfo[fp].pageNum) || 0;
     }
 
     getAllFilePageNum(filteredFiles){
@@ -360,6 +380,9 @@ export default class ExplorerPage extends Component {
     //comes from zipInfo libray, may not be reliable
     //because sometimes, filename dont chane but the size change 
     getTotalImgSize(fp){
+        if(this.imgFolders[fp]){
+            return this.imgFolderInfo[fp].totalImgSize;
+        }
        return +(this.zipInfo[fp] && this.zipInfo[fp].totalImgSize) || 0;
     }
 
@@ -386,11 +409,15 @@ export default class ExplorerPage extends Component {
     }
 
     getMusicNum(fp){
+        if(this.imgFolders[fp]){
+            return this.imgFolders[fp].filter(isMusic).length;
+        }
         return +(this.zipInfo[fp] && this.zipInfo[fp].musicNum) || 0;
     }
     
     getFilteredFiles(){
         let files = this.files || [];
+        files = files.concat(_.keys(this.imgFolders))
         const goodSet = this.state.goodAuthors;
         const otherSet = this.state.otherAuthors;
         const guessIfUserLike = this.guessIfUserLike;
@@ -444,12 +471,22 @@ export default class ExplorerPage extends Component {
 
         const filterText = _.isString(this.state.filterText) && this.state.filterText.toLowerCase();
         if(filterText){
-            return files.filter(e => {
+            files = files.filter(e => {
                 return e.toLowerCase().indexOf(filterText) > -1;
             });
-        }else{
-            return files;
         }
+
+        if(userConfig.filter_empty_zip){
+            files = files.filter(e => {
+                if(this.hasZipInfo(e)){
+                    if(this.getMusicNum(e) === 0 && this.getPageNum(e) === 0){
+                        return false;
+                    }
+                }
+                return true;
+            });
+        }
+        return files;
     }
 
     getFilteredVideos(){
@@ -509,7 +546,7 @@ export default class ExplorerPage extends Component {
         }else if (sortOrder === TIME_DOWN ||  sortOrder === TIME_UP){
             const ifFromEarly = sortOrder === TIME_UP;
             const ifOnlyBymTime = this.getMode() === MODE_EXPLORER;
-            files = sortUtil.sort_file_by_time(files, this.fileInfos, getBaseName, ifFromEarly, ifOnlyBymTime);
+            files = sortUtil.sort_file_by_time(files, this.allfileInfos, getBaseName, ifFromEarly, ifOnlyBymTime);
         } else if (sortOrder === FILE_SIZE_DOWN || sortOrder === FILE_SIZE_UP){
             files = _.sortBy(files, e => {
                 const size =  this.getFileSize(e);
@@ -542,7 +579,7 @@ export default class ExplorerPage extends Component {
         const { sortOrder } = this.state;
         let dirs = this.dirs||[];
         let videos = filteredVideos;
-        let files = filteredFiles ;
+        let files = filteredFiles;
 
         try {
             files = this.sortFiles(files, sortOrder);
@@ -587,10 +624,10 @@ export default class ExplorerPage extends Component {
             const toUrl =  clientUtil.getOneBookLink(item);
 
             const fileSize = this.getFileSize(item);
-            const fileSizeStr = fileSize && filesizeUitl(fileSize, {base: 2});
+            const fileSizeStr = fileSize && filesizeUitl(fileSize);
 
             const avgSize = this.getPageAvgSize(item, "for-dispaly");
-            const avgSizeStr = avgSize && filesizeUitl(avgSize, {base: 2});
+            const avgSizeStr = avgSize && filesizeUitl(avgSize);
 
             let seperator;
  
@@ -615,11 +652,23 @@ export default class ExplorerPage extends Component {
 
                 const hasZipInfo = this.hasZipInfo(item);
                 const musicNum = this.getMusicNum(item);
+                const isImgFolder = !!this.imgFolders[item];
                 const hasMusic = musicNum > 0;
+                const pageNum = this.getPageNum(item);
 
                 const fileInfoRowCn = classNames("file-info-row", {
                     "less-padding": hasMusic
                 })
+
+                let thumbnailurl;
+                if(isImgFolder){
+                    const _imgs = this.imgFolders[item].filter(isImage);
+                    clientUtil.sortFileNames(_imgs)
+                    const tp = _imgs[0];
+                    thumbnailurl = clientUtil.getDownloadLink(tp);
+                }else{
+                    thumbnailurl = this.thumbnails[item];
+                }
 
                 zipItem = (
                 <div key={item} className={"col-sm-6 col-md-4 col-lg-3 file-out-cell"}>
@@ -627,20 +676,21 @@ export default class ExplorerPage extends Component {
                         <Link  target="_blank" to={toUrl}  key={item} className={"file-cell-inner"}>
                             <FileCellTitle str={text}/>
                             <LoadingImage 
+                                    asSimpleImage={isImgFolder}
                                     isThumbnail 
                                     className={"file-cell-thumbnail"} 
                                     title={item} fileName={item}   
-                                    url={this.thumbnails[item]}
+                                    url={thumbnailurl}
                                     onReceiveUrl={url => {this.thumbnails[item] = url;}} 
                                     />
                         </Link>
                         <div className={fileInfoRowCn}>
                             <span title="file size">{fileSizeStr}</span>
-                            {hasZipInfo  &&  <span>{`${this.getPageNum(item)} pages`}</span>}
-                            {hasMusic    &&  <span>{`${musicNum} songs`}</span>}
-                            {hasZipInfo  &&  <span title="average img size"> {avgSizeStr} </span>}
+                            {(hasZipInfo || isImgFolder)  &&  <span>{`${pageNum} pages`}</span>}
+                            {hasMusic  &&  <span>{`${musicNum} songs`}</span>}
+                            <span title="average img size"> {avgSizeStr} </span>
                         </div>
-                        <FileChangeToolbar hasMusic={hasMusic} className="explorer-file-change-toolbar" file={item} />
+                        <FileChangeToolbar isFolder={isImgFolder} hasMusic={hasMusic} className="explorer-file-change-toolbar" file={item} />
                     </div>
                 </div>);
             }
@@ -655,12 +705,8 @@ export default class ExplorerPage extends Component {
 
         return (
             <div className={"explorer-container"}>
-                <ul className={"dir-list container"}>
-                    {dirItems}
-                </ul>
-                <ul className={"dir-list container"}>
-                    {videoItems}
-                </ul>
+                <ItemsContainer items={dirItems} neverCollapse/>
+                <ItemsContainer items={videoItems} />
                 {this.renderPagination(filteredFiles, filteredVideos)}
                 {this.renderSortHeader()}
                 <div className={"file-grid container"}>
@@ -677,10 +723,15 @@ export default class ExplorerPage extends Component {
     }
 
     toggleRecursively(){
+        //reset same as componentDidUpdate()
         this.videoFiles = []
         this.files = [];
         this.dirs = [];
         this.res = null;
+        this.fileInfos = {};
+        this.thumbnails = {};
+        this.imgFolders = {};
+        this.imgFolderInfo = {};
 
         this.setStateAndSetHash({
             pageIndex: 1,
@@ -776,14 +827,14 @@ export default class ExplorerPage extends Component {
         const totalZipSize = this.getAllFileSize(filteredFiles);
         const totalVideoSize = this.getAllFileSize(filteredVideos);
         const totalSize = totalZipSize + totalVideoSize;
-        const title = `${filesizeUitl(totalZipSize,2)} zips and ${filesizeUitl(totalVideoSize,2)} videos`
+        const title = `${filesizeUitl(totalZipSize)} zips and ${filesizeUitl(totalVideoSize)} videos`
         const totalPageNum = this.getAllFilePageNum(filteredFiles);
         return (
             <React.Fragment>
             <div className="file-count col-6 col-md-4"><i className="fas fa-file-archive"/>{filteredFiles.length + " compressed files"} </div>
             <div className="file-count col-6 col-md-4"><i className="fas fa-paperclip"/>{totalPageNum + " pages"} </div>
             <div className="file-count col-6 col-md-4"><i className="fas fa-film"/>{filteredVideos.length + " video files"} </div>
-            <div className="file-count col-6 col-md-4" title={title}><i className="fas fa-hdd"/>{filesizeUitl(totalSize, {base: 2})} </div>
+            <div className="file-count col-6 col-md-4" title={title}><i className="fas fa-hdd"/>{filesizeUitl(totalSize)} </div>
             </React.Fragment>
         );
     }
@@ -869,10 +920,20 @@ export default class ExplorerPage extends Component {
         } 
     }
 
+    toggleItemNum(){
+        let nv = this.state.perPageItemNum + 12;
+        nv = Math.min(nv, 108); 
+        this.setStateAndSetHash({
+            perPageItemNum: nv,
+            pageIndex: Math.min(Math.ceil(this.getFilteredFiles().length/nv), this.state.pageIndex)
+        })
+    }
+
     renderPagination(filteredFiles, filteredVideos){
         if(this.getMode() === MODE_HOME){
             return;
         }
+ 
         const fileLength = filteredFiles.length;
         return (<div className="pagination-container">
                             <Pagination ref={ref => this.pagination = ref}
@@ -880,6 +941,7 @@ export default class ExplorerPage extends Component {
                             itemPerPage={this.getNumPerPage()}
                             totalItemNum={fileLength} 
                             onChange={this.handlePageChange.bind(this)} 
+                            onExtraButtonClick={this.toggleItemNum.bind(this)}
                             /></div>);
     }
 
@@ -906,7 +968,8 @@ export default class ExplorerPage extends Component {
 
     toggleGoodAuthor(){
         this.setStateAndSetHash({
-            filterByGoodAuthorName: !this.state.filterByGoodAuthorName
+            filterByGoodAuthorName: !this.state.filterByGoodAuthorName,
+            pageIndex: 1
         });
     };
 
@@ -918,30 +981,23 @@ export default class ExplorerPage extends Component {
 
     toggleGuess(){
         this.setStateAndSetHash({
-            filterByGuess: !this.state.filterByGuess
+            filterByGuess: !this.state.filterByGuess,
+            pageIndex: 1
         });
     };
 
     toggleFirstTime(){
         this.setStateAndSetHash({
-            filterByFirstTime: !this.state.filterByFirstTime
+            filterByFirstTime: !this.state.filterByFirstTime,
+            pageIndex: 1
         });
     }
 
     toggleHasMusic(){
         this.setStateAndSetHash({
-            filterByHasMusic: !this.state.filterByHasMusic
+            filterByHasMusic: !this.state.filterByHasMusic,
+            pageIndex: 1
         });
-    }
-
-    getAllFileSize(files){
-        let totalSize = 0;
-        files.forEach(e => {
-            if(this.fileInfos[e]){
-                totalSize += this.fileInfos[e].size;
-            }
-        });
-        return totalSize;
     }
 
     renderSideMenu(filteredFiles, filteredVideos){
@@ -984,7 +1040,6 @@ export default class ExplorerPage extends Component {
                 anchorSideMenu: this.state.anchorSideMenu
             });
 
-       
             return (<div className={cn}>
                     <div className="side-menu-radio-title"> Special Filter </div>
                     {this.renderSpecialFilter()}

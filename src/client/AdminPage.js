@@ -8,7 +8,6 @@ import Swal from 'sweetalert2';
 import Cookie from "js-cookie";
 import { Link } from 'react-router-dom';
 import RadioButtonGroup from './subcomponent/RadioButtonGroup';
-const filesizeUitl = require('filesize');
 const clientUtil = require("./clientUtil");
 const { getBaseName } = clientUtil;
 const dateFormat = require('dateformat');
@@ -149,7 +148,7 @@ export default class AdminPage extends Component {
             content = (<div className="admin-section-title"> You are authorized to move/delete files. </div>)
         }else{
             content = (<React.Fragment>
-                        <div className="admin-section-title">Type password to move/delete file </div>
+                        <div className="admin-section-title">Enter password to move/delete file </div>
                         <div className="admin-section-content">
                         <input className="admin-intput" ref={pathInput => this.passwordInputRef = pathInput}
                                     placeholder="...type here"  onChange={this.setPasswordCookie.bind(this)}/>
@@ -216,7 +215,7 @@ export default class AdminPage extends Component {
         const folder_list = this.state.dirs.concat("All_Pathes");
 
         const { totalSize, cacheNum } = this.state
-        const size = totalSize && filesizeUitl(totalSize, {base: 2});
+        const size = totalSize && clientUtil.filesizeUitl(totalSize);
         let cacheInfo;
 
         if(size){

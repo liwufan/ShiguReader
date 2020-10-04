@@ -1,6 +1,15 @@
 const util = require("@common/util");
 const Cookie = require("js-cookie");
 const _ = require("underscore");
+const filesizeUitl = require('filesize');
+
+module.exports.filesizeUitl = function(num){
+    if(isNaN(num)){
+        return "";
+    }
+
+    return filesizeUitl(num, {base: 2});
+}
 
 module.exports.getDir = function (fn) {
     if (!fn) { return ""; }
@@ -20,15 +29,25 @@ module.exports.getFileUrl = function (url){
 }
 
 const encodeFileUrl = module.exports.encodeFileUrl = function(url){
+    if(!url){
+        return "";
+    }
     const ii = url.lastIndexOf('/')+1;
     const result =  url.substring(0, ii) + encodeURIComponent(url.substring(ii));
     return result;
 }
 
-const getBaseNameWithoutExtention = function (fn, seperator) {
+const getBaseNameWithoutExtention = module.exports.getBaseNameWithoutExtention = function (fn, seperator) {
     seperator = seperator || "/"
-    if (!fn) { return ""; }
-    return getBaseName(fn, seperator).split(".")[0];
+    if (!fn) { 
+        return ""; 
+    }
+    const tokens = getBaseName(fn, seperator).split(".");
+    if(tokens.length < 2){
+        return fn;
+    }else{
+        return tokens.slice(0, tokens.length - 1).join(".");
+    }
 };
 
 module.exports.isIOS = function(){
@@ -45,7 +64,7 @@ module.exports.getPerPageItemNumber = function() {
     if(isMobile()){
         return 3 * 6;
     }else{
-        return 4 * 5;
+        return 4 * 6;
     }
 }
 
@@ -66,6 +85,17 @@ module.exports.isAuthorized = function(){
         const password =  Cookie.get('password');
         return userConfig.file_change_password === password;
     }
+}
+
+module.exports.isAllowedToEnter = function(){
+    const userConfig = require('@config/user-config');
+    if(!userConfig.home_password){
+        return true;
+    }
+
+    const Cookie = require("js-cookie");
+    const password =  Cookie.get('home-password');
+    return userConfig.home_password === password;
 }
 
 // module.exports.cleanSearchStr = function(str){
@@ -107,11 +137,20 @@ module.exports.getOneBookLink = function(path){
     return "/onebook/?p=" + encodeURIComponent(path);
 }
 
+module.exports.getOneBookOverviewLink = function(path){
+    return "/onebookOverview/?p=" + encodeURIComponent(path);
+}
+
+module.exports.getOneBookWaterfallLink = function(path){
+    return "/onebookWaterfall/?p=" + encodeURIComponent(path);
+}
+
 module.exports.getVideoPlayerLink = function(path){
     return "/videoPlayer/?p=" + encodeURIComponent(path);
 }
 
 module.exports.getDownloadLink = function(path){
+    if(!path){ return ""; }
     return "/api/download/?p=" + encodeURIComponent(path);
 }
 
