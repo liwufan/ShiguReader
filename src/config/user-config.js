@@ -83,4 +83,3 @@ module.exports.home_password = ""
 
 //do not display a zip if it has no image files or music files
 module.exports.filter_empty_zip = true;
-module.exports.filter_empty_zip = true;
