@@ -145,9 +145,13 @@ async function init() {
 
     setUpFileWatch(path_will_watch);
 
-    const machineLearning = require("./models/machineLearning");
-    machineLearning.init();
-   
+    try{
+        const machineLearning = require("./models/machineLearning");
+        machineLearning.init();
+    }catch(e){
+        console.error(e);
+    }
+
     const port = isProduction? http_port: dev_express_port;
     const server = app.listen(port, async () => {
         console.log("----------------------------------------------------------------");
@@ -431,9 +435,13 @@ async function extractThumbnailFromZip(filePath, res, mode, config) {
     //do not use zip db's information
     //in case previous info is changed or wrong
     if(isPregenerateMode){
-        //in pregenerate mode, it always updates db content
-        temp = await listZipContentAndUpdateDb(filePath);
-        files = temp.files;
+        if(config.fastUpdateMode && zipInfoDb.has(filePath)){
+            //skip
+        }else{
+            //in pregenerate mode, it always updates db content
+            temp = await listZipContentAndUpdateDb(filePath);
+            files = temp.files;
+        }
     }
 
     const thumbnail = getThumbnailFromThumbnailFolder(outputPath);
@@ -485,6 +493,8 @@ app.post('/api/pregenerateThumbnails', async (req, res) => {
         return;
     }
 
+    const fastUpdateMode = req.body && req.body.fastUpdateMode;
+
     const allfiles = getAllFilePathes();
     let totalFiles = allfiles.filter(isCompress);
     if(path !== "All_Pathes"){
@@ -494,6 +504,7 @@ app.post('/api/pregenerateThumbnails', async (req, res) => {
     let config = {counter: 0, 
                   minCounter: 0,
                   total: totalFiles.length, 
+                  fastUpdateMode,
                   pregenBeginTime: getCurrentTime()};
 
     

@@ -76,10 +76,10 @@ export default class AdminPage extends Component {
     }
 
 
-    onPrenerate(){
+    onPrenerate(fastUpdateMode){
         const pathInput = ReactDOM.findDOMNode(this.pathInputRef);
         const path = pathInput.value || this.state.prePath;
-        AdminUtil.askPregenerate(path);
+        AdminUtil.askPregenerate(path, fastUpdateMode);
     }
 
     onPathChange(e){
@@ -106,20 +106,60 @@ export default class AdminPage extends Component {
     renderHistory(){
         const history = clientUtil.getHistoryFromCookie();
 
-        const historyDom = history.map(e => {
-            const timeStr = dateFormat(e[0], "mm-dd hh:MM");
-            const filePath = e[1];
-            const toUrl =  clientUtil.getOneBookLink(filePath);
+       const groupByDay =  _.groupBy(history, e => {
+            let d = new Date(e[0].getTime());
+            d.setHours(0);
+            d.setMinutes(0);
+            d.setSeconds(0);
+            d.setMilliseconds(0);
+            return d.getTime();
+        });
+
+        const historyDom =  _.keys(groupByDay).map(key => {
+            debugger
+            const timeStr = dateFormat(new Date(parseInt(key)), "dddd, mmmm dS, yyyy");
+            let items = groupByDay[key];
+
+            items = _.sortBy(items, e => e[0].getTime());
+
+            const dayHistory = items.map(e => {
+                const filePath = e[1];
+                const toUrl =  clientUtil.getOneBookLink(filePath);
+    
+                return (
+                    <Link to={toUrl}  key={filePath} className={"history-link"}>
+                        <div className="history-one-line-list-item" key={filePath}>
+                            <span className="file-text" title={filePath}> {getBaseName(filePath)}</span>
+                        </div>
+                    </Link>);
+    
+            })
 
             return (
-                <Link to={toUrl}  key={filePath} className={"history-link"}>
-                    <div className="history-one-line-list-item" key={filePath}>
-                        <span className="date-text"> {timeStr} </span>
-                        <span className="file-text" title={filePath}> {getBaseName(filePath)}</span>
+                <div className="history-day-section">
+                    <div className="date-text">
+                         <span>{timeStr}</span>
+                        <span>{`${items.length} items`}</span> 
                     </div>
-                </Link>);
-
+                    {dayHistory}
+                </div>
+            )
         })
+
+        // const historyDom = history.map(e => {
+        //     const timeStr = dateFormat(e[0], "mm-dd hh:MM");
+        //     const filePath = e[1];
+        //     const toUrl =  clientUtil.getOneBookLink(filePath);
+
+        //     return (
+        //         <Link to={toUrl}  key={filePath} className={"history-link"}>
+        //             <div className="history-one-line-list-item" key={filePath}>
+        //                 <span className="date-text"> {timeStr} </span>
+        //                 <span className="file-text" title={filePath}> {getBaseName(filePath)}</span>
+        //             </div>
+        //         </Link>);
+
+        // })
         
         return (
         <div className="history-section admin-section">
@@ -236,7 +276,8 @@ export default class AdminPage extends Component {
                         <RadioButtonGroup checked={folder_list.indexOf(this.state.prePath)} 
                                         options={folder_list} name="pregenerate" onChange={this.onPathChange.bind(this)}/>
                         <input className="admin-intput" ref={pathInput => this.pathInputRef = pathInput} placeholder="...or any other path"/>
-                        <div className="submit-button" onClick={this.onPrenerate.bind(this)}>Submit</div>
+                        <div className="submit-button" onClick={this.onPrenerate.bind(this)}>Full Update</div>
+                        <div className="submit-button" onClick={this.onPrenerate.bind(this, true)}>Fast Update</div>
                     </div>
                 </div>
 
