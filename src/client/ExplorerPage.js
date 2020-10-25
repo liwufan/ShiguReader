@@ -63,7 +63,7 @@ export default class ExplorerPage extends Component {
     }
 
     getNumPerPage(){
-        return this.state.perPageItemNum; // this.state.noThumbnail? 40 :  this.state.perPageItemNum;
+        return  this.state.noThumbnail? 1000 : this.state.perPageItemNum; // this.state.noThumbnail? 40 :  this.state.perPageItemNum;
     }
 
     getInitState(reset){
@@ -603,7 +603,7 @@ export default class ExplorerPage extends Component {
             const toUrl = clientUtil.getExplorerLink(item);
             const text = this.getMode() === MODE_HOME ? item: getBaseName(item);
             const result =  this.getOneLineListItem(<i className="far fa-folder"></i>, text, item);
-            return  <Link to={toUrl}  key={item}>{result}</Link>;
+            return  <Link target="_blank" to={toUrl}  key={item}>{result}</Link>;
         });
 
         //seperate av from others
@@ -767,10 +767,23 @@ export default class ExplorerPage extends Component {
     }
 
     toggleThumbNail(){
+        const prev = this.state.noThumbnail;
+        const next = !prev;
+        
         this.setStateAndSetHash({
-            noThumbnail: !this.state.noThumbnail,
+            noThumbnail: next,
             pageIndex: 1
         })
+
+        if(next){
+            this.setStateAndSetHash({
+                sortOrder: Constant.FILENAME_DOWN 
+            })
+        }else{
+            this.setStateAndSetHash({
+                sortOrder: Constant.TIME_DOWN
+            })
+        }
     }
 
     toggleShowVideo(){
@@ -1044,7 +1057,7 @@ export default class ExplorerPage extends Component {
             return tag2Freq[b] - tag2Freq[a];
         })
 
-        const tagInfos = tags.slice(0, 30).map(t => {
+        const tagInfos = tags.map(t => {
             return (<div className="side-menu-single-tag col-3" onClick={() => this.setFilterText(t)} key={t}>
                         {t}<span>({tag2Freq[t]})</span> 
                     </div>);
