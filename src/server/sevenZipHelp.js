@@ -3,7 +3,6 @@ const path = require('path');
 const execa = require('execa');
 const pfs = require('promise-fs');
 const _ = require('underscore');
-const pLimit = require('p-limit');
 const isWindows = require('is-windows');
 const zipInfoDb = require("./models/zipInfoDb");
 const { updateZipDb }  = zipInfoDb;
@@ -91,7 +90,6 @@ const get7zipOption = module.exports.get7zipOption = function(filePath, outputPa
 }
 
 const LIST_QUEUE = {};
-const limit = pLimit(1);
 module.exports.listZipContentAndUpdateDb = async function (filePath){
     const emptyResult = { files:[], fileInfos:[], info: {} };
 
@@ -101,7 +99,7 @@ module.exports.listZipContentAndUpdateDb = async function (filePath){
         }
 
         //https://superuser.com/questions/1020232/list-zip-files-contents-using-7zip-command-line-with-non-verbose-machine-friend
-        let {stdout, stderr} = await limit(() => execa(sevenZip, ['l', '-r', '-ba' ,'-slt', filePath]));
+        let {stdout, stderr} = await execa(sevenZip, ['l', '-r', '-ba' ,'-slt', filePath]);
         const text = stdout;
         if (!text || stderr || LIST_QUEUE[filePath]) {
             return emptyResult;
@@ -143,6 +141,8 @@ module.exports.extractByRange = async function(filePath, outputPath, range){
         const DISTANCE = 200;
         let ii = 0;
 
+        let count = 0;
+
         while(ii < range.length){
             //cut into parts
             //when range is too large, will cause OS level error
@@ -155,6 +155,13 @@ module.exports.extractByRange = async function(filePath, outputPath, range){
                 break;
             }
             ii = ii+DISTANCE;
+
+            count++;
+
+            if(count > 100){
+                console.log("-----------warning-----------");
+                debugger
+            }
         }
     }catch (e){
         error = e;

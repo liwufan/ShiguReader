@@ -389,7 +389,6 @@ function logForPre(prefix, config, filePath) {
     }
 }
 
-const pLimit = require('p-limit');
 const thumbnailGenerator = require("../tools/thumbnailGenerator");
 //the only required parameter is filePath
 async function extractThumbnailFromZip(filePath, res, mode, config) {
@@ -566,8 +565,7 @@ app.post('/api/extract', async (req, res) => {
     function sendBack(files, musicFiles, path, stat){
         const tempFiles =  files.filter(e => {
             return !isHiddenFile(e);
-          })
-  ;
+          });
         let zipInfo;
         if(tempFiles.length > 0){
             zipInfo = getZipInfo([path])[path];
@@ -640,7 +638,7 @@ app.post('/api/extract', async (req, res) => {
                     const timeUsed = (time2 - time1);
                     console.log(`[/api/extract] FIRST PART UNZIP ${filePath} : ${timeUsed}ms`);
                     
-                    extractByRange(filePath, outputPath, secondRange)
+                    await extractByRange(filePath, outputPath, secondRange)
                 } else {
                     res.sendStatus(500);
                     console.error('[/api/extract] exit: ', stderr);
