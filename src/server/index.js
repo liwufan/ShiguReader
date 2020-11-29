@@ -85,6 +85,10 @@ const {http_port, dev_express_port } = portConfig;
 
 let thumbnailDb = {};
 
+const jsonfile = require('jsonfile');
+let temp_json_path =  path.join(rootPath,  userConfig.workspace_name, "temp_json_info.json");
+
+
 async function mkdir(path){
     if(!(await isExist(path))){
         const mdkirErr = await pfs.mkdir(path, { recursive: true});
@@ -108,6 +112,13 @@ async function init() {
         }
     }
 
+    let previous_history_obj;
+    try{
+        previous_history_obj= await jsonfile.readFile(temp_json_path)
+    }catch(e){
+        //do nothing since this is trivial
+    }
+
     await mkdir(thumbnailFolderPath);
     await mkdir(cachePath);
 
@@ -119,21 +130,34 @@ async function init() {
 
     console.log("scanning local files");
 
+    const estimated_total = previous_history_obj &&  
+                            _.isEqual(previous_history_obj.path_will_scan, path_will_scan) && 
+                            previous_history_obj.total_count;
+
     let beg = (new Date).getTime()
     const results = await fileiterator(path_will_scan, { 
         filter: shouldWatchForNormal, 
-        doLog: true
+        doLog: true,
+        estimated_total
     });
     results.pathes = results.pathes.concat(home_pathes);
     let end1 = (new Date).getTime();
     console.log(`${(end1 - beg)/1000}s to read local dirs`);
 
-
+   
     console.log("Analyzing local files");
     db.initFileToInfo(results.infos);
-    console.log("There are", getAllFilePathes().length, "files");
+    const total_count =  getAllFilePathes().length;
+    console.log("There are", total_count, "files");
     let end3 = (new Date).getTime();
     console.log(`${(end3 - end1)/1000}s to analyze local files`);
+
+    try{
+        previous_history_obj = {  total_count, path_will_scan  };
+        await jsonfile.writeFile(temp_json_path, previous_history_obj);
+    }catch(e){
+        //nothing
+    }
 
     console.log("----------scan thumbnail------------");
     end1 = (new Date).getTime();
@@ -358,7 +382,7 @@ app.post("/api/tagFirstImagePath", (req, res) => {
     const author = req.body && req.body.author;
     const tag = req.body && req.body.tag;
     if (!author && !tag) {
-        res.sendStatus(404);
+        res.send({failed: true, reason: "No Parameter"});
         return;
     }
 
@@ -367,7 +391,7 @@ app.post("/api/tagFirstImagePath", (req, res) => {
     const files = _.keys(fileInfos);
     chosendFileName = serverUtil.chooseOneZipForOneTag(files, db.getFileToInfo());
     if(!chosendFileName){
-        res.sendStatus(404);
+        res.send({failed: true, reason: "No file found"});
         return;
     }
 
@@ -412,8 +436,9 @@ async function extractThumbnailFromZip(filePath, res, mode, config) {
         })
     }
 
-    function handleFail(){
-        sendable && res.sendStatus(404);
+    function handleFail(reason){
+        reason = reason || "NOT FOUND";
+        sendable && res.send({failed: true, reason: reason});
         if(isPregenerateMode){
             config.total--;
         }
@@ -460,7 +485,7 @@ async function extractThumbnailFromZip(filePath, res, mode, config) {
             const one = serverUtil.chooseThumbnailImage(files);
             if(!one){
                 // console.error("[extractThumbnailFromZip] no thumbnail for ", filePath);
-                handleFail();
+                handleFail("no img in file");
             } else {
                 const stderrForThumbnail = await extractByRange(filePath, outputPath, [one])
                 if (!stderrForThumbnail) {
@@ -473,12 +498,12 @@ async function extractThumbnailFromZip(filePath, res, mode, config) {
                     }
                 } else {
                     console.error("[extractThumbnailFromZip extract exec failed]", code);
-                    handleFail();
+                    handleFail("extract exec failed");
                 }
             }
         } catch(e) {
             console.error("[extractThumbnailFromZip] exception", filePath,  e);
-            handleFail();
+            handleFail(e);
         }
     }
 }
@@ -524,7 +549,7 @@ app.post('/api/firstImage', async (req, res) => {
     const filePath = req.body && req.body.filePath;
 
     if (!filePath || !(await isExist(filePath))) {
-        res.sendStatus(404);
+        res.send({failed: true, reason: "NOT FOUND"});
         return;
     }
     extractThumbnailFromZip(filePath, res);
@@ -534,7 +559,7 @@ app.post('/api/extract', async (req, res) => {
     let filePath =  req.body && req.body.filePath;
     const startIndex = (req.body && req.body.startIndex) || 0;
     if (!filePath) {
-        res.sendStatus(404);
+        res.send({failed: true, reason: "No parameter"});
         return;
     }
 
@@ -553,7 +578,7 @@ app.post('/api/extract', async (req, res) => {
         if(sameFnObj){
             filePath = sameFnObj.filePath;
         } else {
-            res.sendStatus(404);
+            res.send({failed: true, reason: "NOT FOUND"});
             return;
         }
     }
@@ -597,7 +622,7 @@ app.post('/api/extract', async (req, res) => {
             let { files, fileInfos } = await listZipContentAndUpdateDb(filePath);
             files = files.filter(e => isDisplayableInOnebook(e));
             if(files.length === 0){
-               res.sendStatus(404);
+               res.send({failed: true, reason: "has no content"});
                console.error(`[/api/extract] ${filePath} has no content`);
                return;
             }
@@ -609,7 +634,7 @@ app.post('/api/extract', async (req, res) => {
                     const temp = generateContentUrl(pathes, outputPath);
                     sendBack(temp.files, temp.musicFiles, filePath, stat);
                 } else {
-                    res.sendStatus(404);
+                    res.send({failed: true, reason: "fail to extract"});
                 }
             }else{
                 //spit one zip into two uncompress task
@@ -640,15 +665,23 @@ app.post('/api/extract', async (req, res) => {
                     
                     await extractByRange(filePath, outputPath, secondRange)
                 } else {
-                    res.sendStatus(500);
+                    res.send({failed: true, reason: stderr});
                     console.error('[/api/extract] exit: ', stderr);
                 }
             }
        } catch (e){
-            res.sendStatus(500);
+            res.send({failed: true, reason: e});
             console.error('[/api/extract] exit: ', e);
         }
     })();
+});
+
+app.post('/api/getGeneralInfo', (req, res) => {
+    let os = isWindows()? "windows": "linux";
+    res.send({
+        server_os: os,
+        file_path_sep: path.sep
+    })
 });
 
 
@@ -691,6 +724,10 @@ app.use(shutdown);
 
 const minifyZip = require("./routes/minifyZip");
 app.use(minifyZip);
+
+const ehentaiMetadata = require("./routes/ehentaiMetadata") ;
+app.use(ehentaiMetadata);
+
 
 if(isProduction){
     const history = require('connect-history-api-fallback');

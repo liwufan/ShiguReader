@@ -23,9 +23,9 @@ export default class VideoPlayer extends Component {
   componentDidMount(){
     const filePath = this.getTextFromQuery();
     if(filePath){
-      Sender.post("/api/singleFileInfo", {filePath}, res => {
-        if(!res.failed){
-          const {stat} = res;
+      Sender.post("/api/singleFileInfo", { filePath }, res => {
+        if(!res.isFailed()){
+          const {stat} = res.json;
           this.setState({stat})
         }else{
           this.res = res;
@@ -97,7 +97,7 @@ export default class VideoPlayer extends Component {
 
     let content;
     if(hasError || !filePath){
-      const infoStr=  (!filePath || (this.res && this.res.res.status === 404) )? "Video Not Found": "Unable to Play Video";
+      const infoStr=  (!filePath || (this.res && this.res.status === 404) )? "Video Not Found": "Unable to Play Video";
       content = (<div className="flex-center-display-container">  <div className="alert alert-warning col-6" role="alert">{infoStr}</div> </div>);
     }else{
       content = (
@@ -113,7 +113,7 @@ export default class VideoPlayer extends Component {
               {content}
               {videoTitle}
               {videoFileInfo}
-              <FileChangeToolbar showAllButtons className="video-toolbar" file={filePath} popPosition={"top-center"}/>
+              <FileChangeToolbar className="video-toolbar" file={filePath} popPosition={"top-center"}/>
               {this.renderTag()}
             </div>
             );

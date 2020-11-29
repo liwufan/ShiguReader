@@ -25,13 +25,13 @@
   }
 
   &.bigFont{
-    .fa, .letter-button, .fas{
+    .fa, .fas{
       font-size: 14px;
     }
   }
 
 
-  .fa, .letter-button, .fas{
+  .fa, .fas{
     margin-left: 5px;
     cursor: pointer;
     font-size: 12px;
@@ -51,3 +51,63 @@
     font-size: 16px;
   }
 }
+
+//------------------move modal--------------
+
+.ReactModal__Overlay--after-open{
+  @include flex_center_display;
+  z-index: 10;
+  background-color: rgb(39 35 35 / 80%) !important;
+}
+
+.file-change-toolbar-move-modal {
+  background: #929292;
+  max-width: 600px;
+  padding-bottom: 10px;
+  padding-top: 10px;
+  padding-left: 10px;
+  padding-right: 10px;
+
+  border-radius: 4px;
+  font-size: 12px;
+
+  .section {
+    background: white;
+    padding: 5px;
+    border-radius: 2px;
+
+    &.with-bottom-margin{
+      margin-bottom: 5px;
+    }
+  }
+
+  .file-dir-name{
+    margin-bottom: 5px;
+  }
+
+  .aji-file-name {
+    margin-bottom: 10px;
+    display: block;
+
+    .embed-link {
+      color: #414141 !important;
+    }
+  }
+
+  .title {
+    // font-weight: 600;
+    color: #414141;
+    margin-bottom: 2px;
+  }
+
+  .modal-list-item {
+    cursor: pointer;
+    font-size: 11px;
+    color: $font_color_black_two;
+    margin-bottom: 2px;
+    &:hover {
+      @include third_hover_effect;
+    }
+  }
+}
+

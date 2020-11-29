@@ -1,54 +1,46 @@
-import _ from "underscore";
 import 'whatwg-fetch';
 
 const Sender = {};
 
-_.resHandle = function (res) {
-    if (res.status === 200 || res.status === 304) {
-        return res.json();
-    }
-    console.error('[failed]', res.status, res.statusText);
-    return { failed: true, res };
-};
-
-Sender.simplePost = function (api, body, callback) {
-    fetch(api, {
-        method: 'POST',
-        headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body)
-    })
-    .then(res => {
-        if(!(res.status === 200 || res.status === 304)){
-            res.failed = true;
+function attachFunc(res){
+    res.isFailed = () =>{
+        if(res.json && res.json.failed){
+            return true;
         }
-        callback(res);
-    });
-};
+        return !(res.status === 200 || res.status === 304);
+    }
+}
 
-Sender.post = function (api, body, callback) {
-    fetch(api, {
+
+const postWithPromise = Sender.postWithPromise = async function (api, body) {
+    const res = await  fetch(api, {
         method: 'POST',
         headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
         },
         body: JSON.stringify(body)
-    })
-    .then(_.resHandle)
-    .then(callback);
+    });
+
+    try {
+        //e.g when 504, there is no json, will throw a error
+        res.json = await res.json();
+    }catch(e){
+        res.json = {failed: true}
+    }
+    
+    attachFunc(res);
+    return res;
 };
 
-Sender.get = function (api, callback) {
-    fetch(api)
-    .then(_.resHandle)
-    .then(callback);
-};
 
-Sender.lsDir = function (body, callback) {
-    Sender.post('/api/lsDir', body, callback);
+//server will return json
+Sender.post = async function (api, body, callback) {
+    if(!callback){
+        throw "no callback function"
+    }
+    const res = await postWithPromise(api, body);
+    callback(res);
 };
 
 export default Sender;

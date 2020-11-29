@@ -109,7 +109,7 @@ export default class ChartPage extends Component {
                 this.handleRes(res);
             });
 
-            Sender.get('/api/getGoodAuthorNames', res =>{
+            Sender.post('/api/getGoodAuthorNames', {}, res =>{
                 this.setState({
                     goodAuthors: res.goodAuthors,
                     otherAuthors: res.otherAuthors
@@ -119,8 +119,8 @@ export default class ChartPage extends Component {
     }
 
     handleRes(res){
-        if (!res.failed) {
-            let { fileToInfo, fileInfos } = res;
+        if (!res.isFailed()) {
+            let { fileToInfo, fileInfos } = res.json;
             this.fileToInfo = fileInfos || fileToInfo || {};
             this.files = _.keys(this.fileToInfo) || [];
         }else{
@@ -131,7 +131,7 @@ export default class ChartPage extends Component {
     }
 
     isFailedLoading(){
-        return this.res && this.res.failed;
+        return this.res && this.res.isFailed();
     }
 
     getMode(props){
@@ -508,7 +508,7 @@ export default class ChartPage extends Component {
         if (!this.res) {
             return (<CenterSpinner/>);
         } else if(this.isFailedLoading()) {
-            return <ErrorPage res={this.res.res}/>;
+            return <ErrorPage res={this.res}/>;
         } else if(filtererFiles.length < too_few){
             return ( <div className="chart-container container">
                         {filePath}

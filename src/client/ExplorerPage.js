@@ -196,38 +196,34 @@ export default class ExplorerPage extends Component {
         //filterType ??
     }
 
-    requestHomePagePathes() {
-        Sender.post("/api/homePagePath", { }, res => {
-            this.handleRes(res);
-        });
-    }
-    
-
-    askServer(){
+    async askServer(){
+        let  res;
         if(this.getMode() === MODE_HOME){
-            this.requestHomePagePathes();
+            res = await Sender.postWithPromise("/api/homePagePath", {});
         } else{
             const hash = this.getTextFromQuery();
             if (hash && this.loadedHash !== hash && this.failedTimes < 3) {
                 if(this.getMode() === MODE_TAG){
-                    this.requestSearch();
+                    res = await  Sender.postWithPromise("/api/search", { text: this.getTextFromQuery(), mode: this.getMode()})
                 } else if(this.getMode() === MODE_AUTHOR){
-                    this.requestSearch();
+                    res = await  Sender.postWithPromise("/api/search", { text: this.getTextFromQuery(), mode: this.getMode()})
                 } else if (this.getMode() === MODE_SEARCH){
-                    this.requestTextSearch();
+                    res = await  Sender.postWithPromise("/api/search", { text: this.getSearchTextFromQuery(), mode: this.getMode()})
                 } else {
-                    this.requestLsDir();
+                    res = await Sender.postWithPromise('/api/lsDir', { dir: this.getTextFromQuery(), isRecursive: this.state.isRecursive });
                 }
             }
         }
+        res && this.handleRes(res);
     }
 
+  
     componentDidMount() {
         this.askServer();
 
         this.bindUserInteraction();
 
-        Sender.get('/api/getGoodAuthorNames', res =>{
+        Sender.postWithPromise('/api/getGoodAuthorNames', {}, res =>{
             this.setState({
                 goodAuthors: res.goodAuthors,
                 otherAuthors: res.otherAuthors
@@ -269,8 +265,8 @@ export default class ExplorerPage extends Component {
     }
 
     handleRes(res){
-        if (!res.failed) {
-            let {dirs, tag, author, fileInfos, thumbnails, zipInfo, imgFolders, imgFolderInfo,  guessIfUserLike} = res;
+        if (!res.isFailed()) {
+            let {dirs, tag, author, fileInfos, thumbnails, zipInfo, imgFolders, imgFolderInfo,  guessIfUserLike} = res.json;
             this.loadedHash = this.getTextFromQuery();
             this.fileInfos = fileInfos || {};
             const files = _.keys(this.fileInfos) || [];
@@ -310,11 +306,7 @@ export default class ExplorerPage extends Component {
         }
     }
 
-    requestTextSearch() {
-        Sender.post("/api/search", { text: this.getSearchTextFromQuery(),  mode: this.getMode()}, res => {
-            this.handleRes(res);
-        });
-    }
+
 
     handleKeyDown(event) {
         //this cause input wont work 
@@ -330,19 +322,6 @@ export default class ExplorerPage extends Component {
           this.prev();
           event.preventDefault();
         }
-    }
-
-    requestSearch() {
-        Sender.post("/api/search", { text: this.getTextFromQuery(),
-                                    mode: this.getMode()}, res => {
-            this.handleRes(res);
-        });
-    }
-    
-    requestLsDir() {
-        Sender.lsDir({ dir: this.getTextFromQuery(), isRecursive: this.state.isRecursive }, res => {
-            this.handleRes(res);
-        });
     }
 
     //comes from file db.
@@ -604,7 +583,7 @@ export default class ExplorerPage extends Component {
             if(!this.res){
                 return (<CenterSpinner text={this.getTextFromQuery()}/>);
             }else{
-                const str = this.getMode() === MODE_EXPLORER? "Empty Folder" : "Empty Result";
+                const str = this.getMode() === MODE_EXPLORER? "0 Folder 0 Zip 0 Video" : "Empty Result";
                 return (<div className="one-book-nothing-available">
                             <div className="alert alert-secondary" role="alert">{str}</div>
                         </div>);
@@ -705,19 +684,30 @@ export default class ExplorerPage extends Component {
                     thumbnailurl = this.thumbnails[item];
                 }
 
+                const thumbnailCn = classNames("file-cell-thumbnail",{
+                    "as-folder-thumbnail": isImgFolder
+                });
+
+                let imgDiv = <LoadingImage 
+                asSimpleImage={isImgFolder}
+                isThumbnail 
+                className={thumbnailCn} 
+                title={item} fileName={item}   
+                url={thumbnailurl}
+                onReceiveUrl={url => {this.thumbnails[item] = url;}} 
+                />;
+
+                if(isImgFolder){
+                    imgDiv = (<div className="folder-effect"> {imgDiv} </div>)
+                }
+
+
                 zipItem = (
                 <div key={item} className={"col-sm-6 col-md-4 col-lg-3 file-out-cell"}>
                     <div className="file-cell">
                         <Link  target="_blank" to={toUrl}  key={item} className={"file-cell-inner"}>
                             <FileCellTitle str={text}/>
-                            <LoadingImage 
-                                    asSimpleImage={isImgFolder}
-                                    isThumbnail 
-                                    className={"file-cell-thumbnail"} 
-                                    title={item} fileName={item}   
-                                    url={thumbnailurl}
-                                    onReceiveUrl={url => {this.thumbnails[item] = url;}} 
-                                    />
+                            {imgDiv}
                         </Link>
                         <div className={fileInfoRowCn}>
                             <span title="file size">{fileSizeStr}</span>
@@ -755,7 +745,7 @@ export default class ExplorerPage extends Component {
     }
     
     isFailedLoading(){
-        return this.res && this.res.failed;
+        return this.res && this.res.isFailed();
     }
 
     toggleRecursively(){
@@ -774,7 +764,11 @@ export default class ExplorerPage extends Component {
             isRecursive: !this.state.isRecursive
         }, ()=>{
             this.failedTimes = 0;
-            this.requestLsDir();
+            // this.requestLsDir();
+            (async ()=>{
+                let res = await Sender.postWithPromise('/api/lsDir', { dir: this.getTextFromQuery(), isRecursive: this.state.isRecursive });
+                this.handleRes(res);
+            })();
         })
     }
 
@@ -1206,7 +1200,7 @@ export default class ExplorerPage extends Component {
         this.setWebTitle();
 
         if (this.isFailedLoading()) {
-            return <ErrorPage res={this.res.res}/>;
+            return <ErrorPage res={this.res}/>;
         }
 
         const filteredFiles = this.getFilteredFiles();

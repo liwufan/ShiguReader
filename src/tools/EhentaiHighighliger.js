@@ -1,473 +1,221 @@
 // ==UserScript==
-// @name			EhentaiLight配合Shigureader
+// @name        EhentaiLight配合Shigureader
 // @grant       GM_xmlhttpRequest
 // @grant       GM_addStyle
 // @grant       GM_getValue
 // @grant       GM_setValue
+// @grant       GM_getResourceText
 // @connect     localhost
 // @namespace       Aji47
-// @version			0.0.1
+// @version         0.0.21
 // @description
-// @author			Aji47
-// @include			*://exhentai.org/*
-// @include			*://g.e-hentai.org/*
-// @include			*://e-hentai.org/*
+// @author        Aji47
+// @include       *://exhentai.org/*
+// @include       *://g.e-hentai.org/*
+// @include       *://e-hentai.org/*
+// @require      https://raw.githubusercontent.com/hjyssg/ShiguReader/dev/src/name-parser/all_in_one/index.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/lokijs/1.5.11/lokijs.min.js
 // ==/UserScript==
 
-//用于tempermonkey
+//tamper monkey自动缓存require脚本，随便改一下版本号就可以更新
 
-//----------------from nameParser/singleFileVersion
-const same_tags = [
-    ["艦これ","艦隊これくしょん", "艦隊これくしょん-艦これ-", "艦隊これくしょん -艦これ-","艦隊これくしょん -艦これ", "Kantai Collection -KanColle-", "Kantai Collection"],
-    ["ラブライブ!","ラブライブ! School idol project","ラブライブ"],
-    ["ラブライブ!サンシャイン!!", "ブライブ！ サンシャイン!!"],
-    ["Fate⁄Grand Order", "Fate／Grand Order", "FateGrand Order", "Fate Grand Order", "FGO"],
-    ["オリジナル", "Original"],
-    ["東方Projec","東方"],
-    ["アイドルマスター", "アイマス", "THE iDOLM@STER"],
-];
-
-const not_author_but_tag = [
-    "同人音声",
-    "アンソロジー",
-    "DL版",
-    "よろず",
-    "成年コミック",
-    "Pixiv",
-    "アーティスト",
-    "雑誌",
-    "English",
-    "320K"
-]
-
-const book_types = [
-    "同人音声",
-    "同人ソフト",
-    "同人CG集",
-    "同人ゲーム",
-    "成年コミック",
-    "一般コミック",
-    "ゲームCG",
-    "画集"
-]
-
-const localCache = {};
-
-function init(){
-    let comiket_tags = [];
-    let comic_star_tags = [];
-    for(let index = 65; index < 100; index++){
-        comiket_tags.push(`C${index}`);
-    }
-    
-    comic_star_tags.push("COMIC1");
-    for(let index = 2; index < 20; index++){
-        comic_star_tags.push(`COMIC1☆${index}`)
-    }
-
-    let all_comic_tags = comiket_tags.concat(comic_star_tags);
-
-    const all_comic_tags_table = {}
-    all_comic_tags.forEach(e => {
-        all_comic_tags_table[e.toLowerCase()] = true;
-    });
-
-    const book_type_table = {};
-    book_types.forEach(e => {
-        book_type_table[e.toLowerCase()] = true;
-    })
-
-    const not_author_but_tag_table = {};
-    not_author_but_tag.forEach(e => {
-        not_author_but_tag_table[e.toLowerCase()] = true;
-    })
-
-
-    //--------------------------------------------
-    const convert_table = {};
-    same_tags.forEach(row => {
-        for(let ii = 1; ii < row.length; ii++){
-            convert_table[row[ii]] = row[0];
-        }
-    });
-
-
-    //------------------------------------
-    return {
-        all_comic_tags,
-        all_comic_tags_table,
-        book_type_table,
-        not_author_but_tag_table,
-        comiket_tags,
-        comic_star_tags,
-        convert_table
-    }
+GM_addStyle (`
+.shigureader_link {
+    font-size: 12px;
+    text-decoration:none;
+    text-align: center;
 }
 
-const {
-    all_comic_tags,
-    all_comic_tags_table,
-    not_author_but_tag_table,
-    book_type_table,
-    comiket_tags,
-    comic_star_tags,
-    convert_table
-} = init();
+.shigureader_link:hover {
+       color: #b0f3ff
+}
+
+.gl1t {
+    position: relative;
+}
+
+`);
 
 
-const tag_to_date_table = {};
-function getDateFromParse(str){
-    const pp = parse(str);
-    let result;
-    if(pp){
-        if(pp.dateTag){
-            result = getDateFromStr(pp.dateTag);
-        }else{
-            result = getDateFromTags(pp.tags)
+
+console.assert = console.assert || (() => {});
+
+//-------------------------------
+function oneInsideOne(s1, s2){
+    return s1 && s2 && (s1.includes(s2) || s2.includes(s1));
+}
+
+const puReg = /[ \.,\/#!$%\^&＆\*;:{}=\-_`~()\[\]\–-、｀～？！＠@、。／『』「」；’：・｜＝＋￥：？]/g
+function _clean(str){
+    return str && str.replaceAll(puReg, "");
+}
+
+console.assert(_clean("和泉、れいぜい") === _clean("和泉, れいぜい"))
+
+const IS_IN_PC = 100;
+const LIKELY_IN_PC = 70;
+const SAME_AUTHOR = 20;
+const TOTALLY_DIFFERENT = 0;
+
+function isTwoBookTheSame(fn1, fn2){
+    fn1 = fn1.toLowerCase();
+    fn2 = fn2.toLowerCase();
+
+    const r1 = parse(fn1);
+    const r2 = parse(fn2);
+
+    if(_clean(r1.author) !== _clean(r2.author)){
+        return TOTALLY_DIFFERENT;
+    }
+
+    let result = SAME_AUTHOR;
+    //e.g one is c97, the other is c96. cannot be the same
+    if(r1.comiket && r2.comiket && r1.comiket !== r2.comiket ){
+        return result;
+    }
+
+    let isSimilarGroup;
+    let group1 = _clean(r1.group);
+    let group2 = _clean(r2.group);
+    if((group1 && !group2) || (!group1 && group2)){
+        isSimilarGroup = true;
+    }else{
+        isSimilarGroup = isHighlySimilar(group1, group2);
+    }
+
+    if(isSimilarGroup){
+        let title1 = _clean(r1.title);
+        let title2 = _clean(r2.title);
+        if(title1 === title2 || isHighlySimilar(title1, title2)){
+            result = IS_IN_PC;
+        }else if(oneInsideOne(title1, title2)){
+            result = LIKELY_IN_PC;
         }
     }
     return result;
 }
 
-//for sort algo, not very accurate
-function getDateFromTags(tags){
-  if(!tags || tags.length === 0){
-      return null;
-  }
-
-  const _tags =  tags.filter(e => all_comic_tags.includes(e));
-  let tag = _tags && _tags[0];
-  let result = null;
-  let num;
-  let year;
-  let month;
-  if(tag){
-    if (tag_to_date_table[tag]) {
-        result = tag_to_date_table[tag];
-    } else if(comiket_tags.includes(tag)) {
-        tag = tag.replace("C", "");
-        num = parseInt(tag);
-        year = Math.floor(num /2) + 1971;
-        const isSummer = num % 2 === 0;
-        month = isSummer? 8 : 11;
-        const day = isSummer? 10: 28;
-        result = new Date(year, month, day);
-        tag_to_date_table[tag] = result;
-    } else if(comic_star_tags.includes(tag)) {
-        tag = tag.replace("COMIC1☆", "");
-        num = parseInt(tag);
-        if(num <= 10){
-            //once per year
-            result = new Date(2006+num, 3, 30);
-        }else{
-            num = (num - 10)
-            year = 2017 + Math.floor(num /2);
-            month = num % 2 === 0? 10 : 4;
-            result = new Date(year, month, 30);
+//------------------------------------------------------
+function compareInternalDigit(s1, s2){
+    const digitTokens1 = s1.match(/\d+/g);
+    const digitTokens2 = s2.match(/\d+/g);
+    if(digitTokens1 && digitTokens2){
+        if(digitTokens1.length !== digitTokens2.length || 
+            digitTokens1.join() !== digitTokens2.join()){
+            return false;
         }
-        tag_to_date_table[tag] = result;
+    }else if(digitTokens1 && !digitTokens2){
+        return false;
+    }else if(!digitTokens1 && digitTokens2){
+        return false;
     }
-  }
-
-  return result;
+    return true;
 }
 
+//------
 
-let pReg = /\((.*?)\)/g;
-let bReg = /\[(.*?)\]/g;
+function checkIfDownload(text, pageNum){
+    var status = 0;
+    let similarTitles = [];
+    let r1 = parse(text);
+
+    function comparePageNum(book, pageNum){
+        if(!isNaN(book.pageNum) && Math.abs(book.pageNum - pageNum) >= 5){
+            return true;
+        }
+        return false;
+    }
+
+    if(r1 && r1.author){
+        //use author as index to find
+        let books = getByAuthor(r1.author);
+
+        if(books && books.length > 0){
+            status = SAME_AUTHOR;
+            for(let ii = 0; ii < books.length; ii++){
+                const book = books[ii];
+                if(comparePageNum(book, pageNum)){
+                    continue;
+                }
+
+                let fn2 =  book.fileName;
+                const r2 = parse(fn2)
+
+                if(!compareInternalDigit(r1.title, r2.title)){
+                    continue;
+                }
+
+                status = Math.max(status, isTwoBookTheSame(text, fn2));
+                if(status === LIKELY_IN_PC){
+                    similarTitles.push(fn2);
+                    //todo pick the most similar 
+                    //or show all
+                }
+
+                if(status === IS_IN_PC){
+                    break;
+                }
+            }
+        }
+    }else{
+        const _text = _clean(text);
+        let reg = escapeRegExp(_text);
+        let books =  file_collection.chain()
+            .find({'_filename_': { '$regex' : reg }})
+            .data();
+
+        books.forEach(e => {
+            if(comparePageNum(e, pageNum)){
+                return;
+            }
+
+            if(e._filename_ === _text){
+                status = IS_IN_PC;
+            }
+
+            if(status < LIKELY_IN_PC && isHighlySimilar(e._filename_, _text)){
+                status = Math.max(status, LIKELY_IN_PC);
+                similarTitles.push(e);
+            }
+        })
+    }
+
+    return {
+        status,
+        similarTitles
+    }
+}
 
 function isOnlyDigit(str){
     return str.match(/^[0-9]+$/) != null
 }
 
-function getDateFromStr(str){
-    let y = convertYearString(str);
-    let m = parseInt(str.slice(2, 4));
-    let d = parseInt(str.slice(4, 6));
 
-    m = m - 1;
-    return new Date(y, m, d);
+//--------------------------------------------------------------
+function getCurrentTime(){
+    return new Date().getTime();
 }
 
-function convertYearString(str) {
-    let y =  parseInt(str.slice(0, 2));
+const begTime = getCurrentTime();
+let time2;
+const file_db = new loki();
+const file_collection = file_db.addCollection("file_collection");
 
-    if (y > 80) {
-        y = 1900 + y;
-    }else {
-        y = 2000 + y;
-    }
-
-    return y;
+escapeRegExp = function(string) {
+    const str = string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+    var reg = new RegExp(str, 'i');
+    return reg;
 }
 
-function isStrDate(str) {
-    if (str && str.length === 6) {
-        const y = parseInt(str.slice(0, 2));
-        const m = parseInt(str.slice(2, 4));
-        const d = parseInt(str.slice(4, 6));
-
-        let invalid = y > 30 && y < 80;
-        invalid = invalid || (m < 0 || m > 12);
-        invalid = invalid || (d < 0 || d > 30);
-        return !invalid;
-    }
-    return false;
-}
-
-function getAuthorName(str){
-    var macthes = str.match(/(.*?)\s*\((.*?)\)/);
-    if(macthes && macthes.length > 0){
-        return {
-            group: macthes[1].trim(),
-            name: macthes[2].trim(),
-        };
-    }else{
-        return {
-            name: str.trim(),
-        };
-    }
-}
-
-function match(reg, str){
-    const result = [];
-    var token = reg.exec(str);
-    while (token){
-        result.push(token[1]);
-        token = reg.exec(str);
-    }
-    return result;
-}
-
-function getTypeAndComiket(tags, group){
-    let comiket;
-    let type;
-    tags.forEach(e => {
-        e = e.toLowerCase();
-        if(all_comic_tags_table[e]){
-            comiket = e;
-        }else if(book_type_table[e]){
-            type = e;
-        }
-    })
-
-    if(!type){
-        if(comiket|| group){
-            type = "Doujin";
-        }else{
-            type = "etc";
-        }
-    }
-
-    return {
-        comiket, type
-    }
-}
-
-function getTag(str, pMacthes, author){
-    let tags = [];
-    if (pMacthes && pMacthes.length > 0) {
-        tags = tags.concat(pMacthes);
-        tags = tags.filter(e=> {return !isOnlyDigit(e)});
-    }
-
-    if(author && tags.indexOf(author) >= 0){
-        tags.splice(tags.indexOf(author), 1);
-    }
-
-    tags = tags.map(e => {
-        return convert_table[e] || e;
-    })
-
-    return tags;
-}
-
-function parse(str) {
-    if (!str || localCache[str] === "NO_EXIST") {
-      return null;
-    }
-
-    if(localCache[str]){
-        return localCache[str];
-    }
-
-    const bMacthes =  match(bReg, str); //[]
-    const pMacthes = match(pReg, str);  //()
-
-    const hasB = (bMacthes && bMacthes.length > 0);
-    const hasP = (pMacthes && pMacthes.length > 0);
-
-    if(!hasB && !hasP){
-        localCache[str] = "NO_EXIST";
-        return;
-    }
-
-    let author = null;
-    let group = null;
-    let dateTag;
-    let tags = [];
-
-    // looking for author, avoid 6 year digit
-    if (bMacthes && bMacthes.length > 0) {
-        for (let ii = 0; ii < bMacthes.length; ii++) {
-            let token = bMacthes[ii].trim();
-            const tt = token.toLowerCase();
-            const nextCharIndex = str.indexOf(bMacthes[ii]) + bMacthes[ii].length + 1; 
-            const nextChar = str[nextCharIndex];
-
-            if (token.length === 6 && isOnlyDigit(token) && isStrDate(token)) {
-                //e.g 190214
-                dateTag = token;
-            } else if (not_author_but_tag_table[tt]){
-                //e.g pixiv is not author
-                tags.push(token);
-            } else if (nextChar === "." || nextCharIndex >= str.length){
-                //e.g KI-RecenT SP02 NATURALCORDE [DL版].zip
-                // [DL版] is not auhor name
-                tags.push(token);
-            } else if(!author) {
-                //  [真珠貝(武田弘光)]
-                const temp = getAuthorName(token);
-                if(!not_author_but_tag_table[temp.name]){
-                    //e.g よろず is not author
-                    author = temp.name;
-                }
-                group = temp.group;
-            }else{
-                tags.push(token);
-            }
-        }
-    }
-
-    tags = tags.concat(getTag(str, pMacthes, author));
-    if(!author && !group && tags.length === 0){
-        localCache[str] = "NO_EXIST";
-        return;
-    }
-
-    const { comiket, type } = getTypeAndComiket(tags, group);
-
-    let title = str;
-    (bMacthes||[]).concat( pMacthes||[], tags||[], [/\[/g, /\]/g, /\(/g, /\)/g ]).forEach(e => {
-        title = title.replace(e, "");
-    })
-    title = title.trim();
-
-    const authors = author && author.includes("、")? author.split("、") : null;
-
-    const result = {
-       dateTag, author, tags, comiket, type, group, title, authors
-    };
-
-    localCache[str] = result;
-    return result;
-}
-
-//--------------
-
-function isSimilar(s1, s2, distance){
-    distance = distance || 3;
-    if(!s1 && !s2){
-        return true;
-    }else if(s1 && s2){
-        return oneInsideOne(s1, s2) && Math.abs(s1.length - s2.length) < distance;
-    }else{
-        return true;
-    }
-}
-
-function isSame(s1, s2){
-    return s1 && s2 && s1 === s2;
-}
-
-function oneInsideOne(s1, s2){
-  return s1 && s2 && (s1.includes(s2) || s2.includes(s1));
-}
-
-const IS_IN_PC = 100;
-const LIKELY_IN_PC = 70;
-const SAME_AUTHOR = 20;
-
-function checkIfDownload(text, allFileInLowerCase, authorTable){
-    var status = 0;
-    let similarTitle;
-    text = text.toLowerCase();
-    let r1 = parse(text);
-    //use author as index to find
-    if(r1 && r1.author){
-        if(!authorTable[r1.author]){
-            //totally unknown author
-            return {
-                status, 
-                similarTitle
-            };
-        } else {
-            status = SAME_AUTHOR;
-            let breakLoop = false;
-            authorTable[r1.author].forEach(e => {
-                if(breakLoop){
-                    return;
-                }
-
-                r1 = parse(text);
-                const r2 = parse(e);
-          
-                const isSimilarGroup = isSimilar(r1.group, r2.group);
-
-                //e.g one is c97, the other is c96. cannot be the same 
-                if(r1.comiket && r2.comiket && r1.comiket !== r2.comiket ){
-                    return;
-                }
-        
-                if(isSimilarGroup){
-                    if(r1.title === r2.title){
-                        status = Math.max(status, IS_IN_PC);
-                        breakLoop = true;
-                    }else if(oneInsideOne(r1.title, r2.title)){
-                        status = LIKELY_IN_PC;
-                        similarTitle = e;
-                    }
-                }
-            })
-        }
-    }else{
-        //pure dull
-        if(status < LIKELY_IN_PC){
-            for (var ii = 0; ii < allFileInLowerCase.length; ii++) {
-                let e = allFileInLowerCase[ii];
-                if(isOnlyDigit(e)){
-                    continue;
-                }
-    
-                if(e === text){
-                    status = IS_IN_PC;
-                    break;
-                }
-          
-                if(isSimilar(text, e, 8)){
-                  status = Math.max(status, LIKELY_IN_PC);
-                  similarTitle = e;
-                }
-            }
-        }
-    }
-
-    return {
-        status, 
-        similarTitle
-    }
-}
-
-const time1 = new Date().getTime();
-
-function onLoad(dom) {
-    // const time2 = new Date().getTime();
-    // console.log((time2 - time1)/1000, "to load");
-
-    GM_setValue('responseText',  dom.responseText);
-    GM_setValue('lastResTime', getCurrentTime());
-    const res = JSON.parse(dom.responseText);
-    highlightThumbnail(res.allFiles);
+function getByAuthor(key){
+    key = _clean(key);
+    let reg = escapeRegExp(key);
+    return file_collection.chain()
+        .find({'_author_': { '$regex' : reg }})
+        .where(obj => {
+            return isHighlySimilar(obj['_author_'], key);
+        })
+        .data();
 }
 
 function highlightThumbnail(allFiles){
@@ -475,46 +223,62 @@ function highlightThumbnail(allFiles){
     if(!nodes  || nodes.length === 0) {
         return;
     }
-    const allFileInLowerCase = allFiles.map(e => e.toLowerCase());
 
-    const authorTable = {};
-    allFileInLowerCase.forEach(e => {
-        const r =  parse(e);
-        if(r && r.author){
-            authorTable[r.author] = authorTable[r.author]||[];
-            authorTable[r.author].push(e);
+    for(let e in allFiles){
+        if (allFiles.hasOwnProperty(e)){
+            const r =  parse(e) || {};
+            const value = allFiles[e];
+            file_collection.insert({
+                fileName: e,
+                _author_: _clean(r.author),
+                _filename_: _clean(e),
+                title: r.title,
+                pageNum: parseInt(value.pageNum)
+            })
         }
-    });
+    }
 
-    // const time25 = new Date().getTime();
-    // console.log((time25 - time2)/1000, "to parse name");
+    const timeMiddle2 = getCurrentTime();
+    console.log((timeMiddle2 - time2)/1000, "to parse name");
 
     nodes.forEach(e => {
         try{
             const subNode = e.getElementsByClassName("gl4t")[0];
             const thumbnailNode = e.getElementsByTagName("img")[0];
             const text = subNode.textContent;
+
+            const pageNumDiv = e.querySelector(".gl5t").children[1].children[1];
+            const pageNum =parseInt(pageNumDiv.textContent.split(" ")[0]);
+
             e.status = 0;
             if(text.includes("翻訳") || text.includes("翻译")){
                 return;
             }
             const r =  parse(text);
-            const {status, similarTitle} = checkIfDownload(text, allFileInLowerCase, authorTable);
+            const {status, similarTitles} = checkIfDownload(text, pageNum);
             e.status = status || 0;
             if(status === IS_IN_PC){
-                subNode.style.color =  "#61ef47"; //"green";
-                thumbnailNode.title = "明确已经下载过了";
+                subNode.style.color =  "#61ef47"; 
+                thumbnailNode.title =  "明确已经下载过了";
             } else if(status === LIKELY_IN_PC){
-                subNode.style.color = "#efd41b"; //"yellow";
-                thumbnailNode.title = `电脑里的“${similarTitle}”和这本好像一样`;
-                // e.style.background = "#212121";
+                subNode.style.color = "#efd41b";
+                addTooltip(thumbnailNode, "电脑里面好像有", similarTitles)
             }else if(status === SAME_AUTHOR){
-                subNode.style.color = "#ef8787"; // "red";
-                let authortimes = authorTable[r.author.toLowerCase()].length; 
-                thumbnailNode.title = `下载同样作者“${r.author}”的书 ${authortimes}次`;
-                // e.style.background = "#111111"
+                subNode.style.color = "#ef8787"; 
+                const fns = getByAuthor(r.author).map(e => e.fileName);
+                addTooltip(thumbnailNode, `下载同样作者“${r.author}”的书 ${fns.length}次`, fns, "same_author")
             }
+
             if(status){
+                if(r){
+                    appendLink(e, r.author);
+                    if(status >= LIKELY_IN_PC){
+                        appendLink(e, r.title);
+                    }
+                }else{
+                    appendLink(e, text);
+                }
+
                 subNode.style.fontWeight = 600;
             }
         }catch(e){
@@ -522,22 +286,44 @@ function highlightThumbnail(allFiles){
         }
     });
 
-    //only sort the home page
-    // if(window.location.pathname === "/"){
-    //     //sort by its status
-    //     //and replace the orginal nodes
-    //     nodes.sort((a, b) =>{return  b.status - a.status;})
-    //     const parentRoot = nodes[0].parentElement;
-    //     parentRoot.innerHTML = '';
-    //     nodes.forEach(e => parentRoot.appendChild(e));
-    // }
-    // const time3 = new Date().getTime();
-    // console.log((time3 - time25)/1000, "to change dom");
+    const finishTime = getCurrentTime();
+    console.log((finishTime - timeMiddle2)/1000, "to finish algo and change dom");
+
+    console.log((finishTime - begTime)/1000, "for any time");
 }
 
-function appendLink(fileTitleDom, text){
+function addTooltip(node, title, books, same_author){
+    books.sort();
+    //indent
+    books = books.map((e, ii) => {
+        let tt =  ii+1;
+        if(tt < 10){
+            tt = "0"+tt;
+        }
+        const t1 = "  " + tt + ".  ";
+        return t1 + e;
+
+        // if(same_author){
+        //     const pObj = parse(e);
+        //     return t1 + (pObj.comiket||"") + pObj.title + "(" + pObj.tags + ")";
+        // }else{
+        // }
+    });
+    if(books.length > 25){
+        books = books.slice(0, 10).concat("...");
+    }
+    node.title = [title, "  ", ].concat(books).join("\n");;
+}
+
+function appendLink(fileTitleDom, text, asIcon){
     var link = document.createElement("a");
-    link.textContent = `Search ${text} in ShiguReader`;
+
+    if(asIcon){
+        link.textContent = "🔍";
+    }else{
+        link.textContent = `Search ${text} in ShiguReader`;
+    }
+
     link.style.display = "block";
     fileTitleDom.append(link);
     link.target = "_blank"
@@ -545,38 +331,66 @@ function appendLink(fileTitleDom, text){
     link.href = "http://localhost:3000/search/?s=" + text;
 }
 
-function getCurrentTime(){
-    return new Date().getTime();
+
+
+
+function GM_xmlhttpRequest_promise(method, api){
+    //tamper monkey have bug
+    //timeout do not work
+    return new Promise((resolve, reject) => {
+        GM_xmlhttpRequest({
+            method: method,
+            url:api,
+            onload: res =>{
+                resolve(res);
+            },
+            onTimeout: ()=> {
+                resolve();
+            },
+            onerror: ()=> {
+                resolve();
+            }
+        });
+      })
 }
 
-function onTimeout(){
-    const responseText = GM_getValue('responseText');
-    if(responseText){
-        const res = JSON.parse(responseText);
-        highlightThumbnail(res.allFiles);
-    }
-}
-
-function main() {
+async function main() {
     const responseText = GM_getValue('responseText');
     const lastResTime = GM_getValue('lastResTime');
     const EXPIRE_TIME = 1000*60*2;
+
+    //detect if the server if running
+    // const isServerRunningRes = await GM_xmlhttpRequest_promise("POST", 'http://localhost:8080/api/getGeneralInfo', 1000);
+
     if(responseText && lastResTime && ( getCurrentTime() - (+lastResTime) < EXPIRE_TIME )){
+        time2 = getCurrentTime();
         const res = JSON.parse(responseText);
         highlightThumbnail(res.allFiles);
     }else{
           //annote file table
         var api = 'http://localhost:8080/api/exhentaiApi';
-        GM_xmlhttpRequest({
-            method: "GET",
-            url:api,
-            onload: onLoad,
-            onerror: onTimeout,
-            ontimeout: onTimeout
-        });
+        const res = await GM_xmlhttpRequest_promise("GET", api);
+        time2 = getCurrentTime();
+        if(res){
+            console.log((time2 - begTime)/1000, "to load");
+            GM_setValue('lastResTime', getCurrentTime());
+
+            const text = res.responseText;
+            GM_setValue('responseText',  text);
+            const json = JSON.parse(text);
+            highlightThumbnail(json.allFiles);
+
+        } else {
+            console.log((time2 - begTime)/1000, "to timeout");
+            const responseText = GM_getValue('responseText');
+            if(responseText){
+                const res = JSON.parse(responseText);
+                highlightThumbnail(res.allFiles);
+            }
+        }
     }
 
-    //add shigureader search link  
+    //add shigureader search link
     let fileTitleDom = document.getElementById("gj");
     let title = fileTitleDom && fileTitleDom.textContent;
 
@@ -603,24 +417,5 @@ function main() {
     }
 }
 
-// .shigureader_link {
-//     font-size: 12px;
-//     text-decoration:none;
-//     &:hover{
-//         color: #b0f3ff
-//     }
-// }
-GM_addStyle(".shigureader_link {   font-size: 12px;   text-decoration: none;} .shigureader_link:hover {    color: #b0f3ff;} ");
-
-// [title]:hover:after{
-//     content: attr(title);
-//     background:white;
-//     color: rgb(27, 25, 25);
-//     font-size: 20px;
-//     padding: 5px;
-//     border-radius:5px;
-//     border:1px solid;
-//     z-index: 100;
-//   }
 
 main();
