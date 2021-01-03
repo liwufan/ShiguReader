@@ -6,7 +6,8 @@
   margin-bottom: 0px;
 
   .breadcrumb-item {
-    display: inline;
+    display: inline-flex;
+    align-items: center;
     font-size: 18px;
 
     @media screen and (max-width: 800px) {
@@ -19,17 +20,26 @@
     -webkit-text-decoration-skip: objects;
   }
 
-  .breadcrumb-item+.breadcrumb-item:before {
+  .breadcrumb-sep {
     padding-left: 4px;
     padding-right: 4px;
-    color: black;
+    color: #DDDDDD;
     font-weight: 600;
-    content: "/\00a0";
+    display: inline-flex;
+    align-items: center;
   }
 
-  .breadcrumb-item  {
-    &:not(.current):hover{
+  .breadcrumb-item {
+    &:not(.current):hover {
       text-decoration: underline;
+    }
+
+    &.current{
+      cursor: pointer;
+      &:hover {
+        color: #db892a;
+        background: unset;
+      }
     }
   }
 }
@@ -48,21 +58,28 @@
   .fas {
     color: $font_color_white_one;
   }
-  
-  &:hover{
+
+  &:hover {
     @include second_hover_effect;
+
     .fas {
       @include second_hover_effect;
     }
   }
 }
 
-.file-count {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  color: $font_color_white_one;
+.file-count-row {
+  padding-bottom: 8px;
+
+  .file-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    margin-right: 20px;
+    color: $font_color_white_one;
+  }
 }
+
 
 @media screen and (max-width: 800px) {
   .file-count,

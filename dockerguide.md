@@ -1,6 +1,8 @@
 # Docker指南
 
-## 修改 src/path-config.ini
+## 修改 path-config.ini
+
+### 这文件很久没维护了。对应不了当前版本。  2020/12/20
 
 把 path-config.ini 的文件路径修改为
 > /data

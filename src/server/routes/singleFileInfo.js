@@ -5,23 +5,26 @@ const express = require('express');
 const router = express.Router();
 const db = require("../models/db");
 const serverUtil = require("../serverUtil");
-const getStat = serverUtil.common.getStat;
+const { getStat } = serverUtil.common;
 
 router.post("/api/singleFileInfo", async (req, res) => {
     const filePath = (req.body && req.body.filePath);
 
     if (!filePath || !(await isExist(filePath))) {
-        res.send({failed: true, reason: "NOT FOUND"});
+        res.send({ failed: true, reason: "NOT FOUND" });
         return;
     }
 
-    let stat =  db.getFileToInfo(filePath);
-    if(!stat){
+    let stat = db.getFileToInfo(filePath);
+    if (!stat) {
         stat = await getStat(filePath);
     }
 
+    const mecab_tokens = await global.mecab_getTokens(filePath);
+
     res.send({
-        stat
+        stat,
+        mecab_tokens
     });
 });
 

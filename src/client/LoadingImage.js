@@ -5,119 +5,132 @@ const Constant = require("@common/constant");
 const classNames = require('classnames');
 import "./style/LoadingImage.scss"
 const clientUtil = require("./clientUtil");
-const { encodeFileUrl } = clientUtil;
+const util = require("@common/util");
 
-
-
+// 需要是isThumbnail && onlyUseURL && 同时初始的url不好用，才会去api request
 export default class LoadingImage extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      failed: 0,
+      fail_time: 0,
       url: props.url
     };
   }
 
   componentDidMount() {
-    if(this.props.isThumbnail){
-      setTimeout(()=>{
+    if (this.props.isThumbnail) {
+      setTimeout(() => {
         this.onChange(true)
       }, 0);
     }
   }
 
-  componentWillUnmount(){
+  componentWillUnmount() {
     this.isUnmounted = true;
   }
 
-  shouldAskUrl(){
-    if(this.props.asSimpleImage){
+  shouldAskUrl() {
+    if(this.props.onlyUseURL){
       return false;
-    }
-    if(!this.state.url){
-      return true
-    }else{
-      if(this.state.url === "NOT_THUMBNAIL_AVAILABLE"){
+    }else if (!this.state.url) {
+      return true;
+    } else {
+      if (this.state.url === "NOT_THUMBNAIL_AVAILABLE") {
         return this.isAuthorTagMode();
-      }else{
+      } else {
         return false;
       }
     }
   }
 
-  onChange(){
-    if(this.shouldAskUrl() & !this.loading){
-        this.requestThumbnail()
+  onChange() {
+    if (this.shouldAskUrl() & !this.loading) {
+      this.requestThumbnail()
     }
   }
 
-  isAuthorTagMode(){
-    const { mode} = this.props;
+  isAuthorTagMode() {
+    const { mode } = this.props;
     return mode === "author" || mode === "tag";
   }
 
-  requestThumbnail(){
+  requestThumbnail() {
     const { mode, fileName } = this.props;
-    const api = (this.isAuthorTagMode()) ? "/api/tagFirstImagePath" :  '/api/firstImage';
+    const api = (this.isAuthorTagMode()) ? "/api/tagFirstImagePath" : '/api/firstImage';
     const body = {};
 
-    if(this.isAuthorTagMode()){
+    if (this.isAuthorTagMode()) {
       body[mode] = fileName;
-    }else{
+    } else {
       body["filePath"] = fileName;
     }
 
     this.loading = true;
     Sender.post(api, body, res => {
-      if(this.isUnmounted){
+      if (this.isUnmounted) {
         return;
       }
       if (res.isFailed()) {
-        this.setState({ failed: this.state.failed+1 }); 
-      }else{
-        const url = res.json.url
+        this.setState({ fail_time: this.state.fail_time + 1 });
+      } else {
+        const url = clientUtil.getFileUrl(res.json.url);
         this.props.onReceiveUrl && this.props.onReceiveUrl(url);
-        this.setState({ url }); 
+        this.setState({ url });
       }
     });
   }
 
-  onError(){
-    if(!this.tryEnoughRequest()){
+  onError() {
+    if (!this.tryEnoughRequest()) {
       this.setState({
         url: null,
-        failed: this.state.failed+1
-      }, ()=> {
+        fail_time: this.state.fail_time + 1
+      }, () => {
         this.requestThumbnail()
       });
     }
   }
 
-  tryEnoughRequest(){
-    return this.state.failed > 2;
+  tryEnoughRequest() {
+    return this.state.fail_time > 2;
   }
 
-  isThumbnailAvaible(){
+  isUrlAvaible() {
     return this.state.url && this.state.url !== "NOT_THUMBNAIL_AVAILABLE";
   }
 
   render() {
     let content;
-    const {className, fileName, url, bottomOffet, topOffet, title, isThumbnail, onReceiveUrl, asSimpleImage, style,   ...others} = this.props;
+    const { className, style, fileName, url, title, 
+             isThumbnail, onlyUseURL, mode, onReceiveUrl,
+              musicNum, ...others } = this.props;
 
-    const cn = classNames("loading-image", className,{
-      "empty-block fas fa-file-archive": !this.isThumbnailAvaible()
+    let empty_icon_cn = "";
+    if(musicNum > 0){
+      empty_icon_cn = " fas fa-music"
+    }else if(fileName && util.isCompress(fileName)){
+      empty_icon_cn = " fas fa-file-archive"
+    }else {
+      empty_icon_cn = " far fa-folder"
+    }
+
+    let cn = classNames("loading-image", className, {
+      "empty-block": !this.isUrlAvaible()
     });
 
-    const _url = asSimpleImage? url : encodeFileUrl(this.state.url);
+    if (!this.isUrlAvaible() && empty_icon_cn) {
+      cn += empty_icon_cn;
+    }
 
-   if (this.isThumbnailAvaible()) {
-      content = (<img style={style} key={fileName} ref={e=>{this.dom = e && e.node}} 
-                      className={className} src={_url} title={title || fileName} 
-                      onError={this.onError.bind(this)} 
-                      {...others}/>);
+    const _url = this.state.url;
+
+    if (this.isUrlAvaible()) {
+      content = (<img style={style} key={fileName} ref={e => { this.dom = e && e.node }}
+        className={className} src={_url} title={title || fileName}
+        onError={this.onError.bind(this)}
+        {...others} />);
     } else {
-      content = (<div key={fileName} className={cn}  title={title || fileName} {...others}/>);
+      content = (<div key={fileName} className={cn} title={title || fileName} {...others} />);
     }
 
     return content;
@@ -129,7 +142,5 @@ LoadingImage.propTypes = {
   className: PropTypes.string,
   mode: PropTypes.string,
   url: PropTypes.string,   //predefined url, not request from this component,
-  bottomOffet: PropTypes.number,
-  topOffet: PropTypes.number,
   onChange: PropTypes.func
 };

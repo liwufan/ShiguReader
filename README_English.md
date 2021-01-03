@@ -18,55 +18,37 @@ Read Comic/Play Music and Video on all platforms
 
 ##### Features
 
-* view the thumbnails of zip/rar/7zip files
-* sort/search files
+* display the thumbnails of zip/rar/7zip files
 * re-compress images to save disk space
 * move/delete files
-* play music files inside compressed files
-* play mp4/mkv/avi files
-* show statistics chart of all collections
+* play music files that are in the zip/rar/7zip files
+* play mp4/mkv/avi files and display their tags
+* show statistics chart
 * same color theme as exh**tai
-* server runs on Windows/*nix
-* client runs on any modern browser(except IE)
-* browse image files in folders <- New
+* support Windows/*nix servers
+* client can run on any modern browser(except IE), including mobile phone and tablet(no need to install any other softwares)
 
 
+### File Format Support
 
-##### Quick Start
+* Compressed files: zip/rar/7zip files  
+* Format support of image/video/music files depends on the browser. Support typical jpg,png,png,mp4,avi,mp3,wav files  
+* More details in src/util.js
 
-```bash
-# If you do not have nodejs installed, please go to https://nodejs.org/
+### Instruction
 
-# install imagemagick  from https://imagemagick.org
+* For windows, download the zip file
+* Modify ini file, then click the ShiguReader.exe
+* For *nix users and developers, please refer to [Readme_Env_Setup](https://github.com/hjyssg/ShiguReader/blob/dev/Readme_Env_Setup.md)
 
-# Clone the repository or download
-git clone https://github.com/hjyssg/ShiguReader
-
-## change user config
-## modify src/path-config.ini  src/user-config.js accoding to your own comic files location
-
-## windows default cmd is not working
-## Please install Git and Git Bash  https://git-scm.com/
-
-# open Git Bash
-cd ShiguReader
-
-# Install dependencies
-npm install
-
-# for *nix people, please install 7zip on your own
-
-# Start development server
-npm run dev
-
-# open the link shown on the git bash
-
-```
+### Third Party Dependency
+It is nice to have. But ShiguReader can run without it.
+install imagemagick  from https://imagemagick.org
 
 ##### Safety
 ShiguReader is not safe when being accessed from the public IP. The server is not prepared for any cyber attack.
 
-If you just want to read comic or watch anime when going outside, you can just download files into you tablet.
+If you just want to read comic or watch anime when going outside, you can download the files to you tablet.
 For example, my ipad has VLC for video and ComicGlass for comic. I download file in Chrome browser and save them to the apps.
 
 ##### How to use on NAS
@@ -78,6 +60,11 @@ Thanks to [this guy](https://github.com/hjyssg/ShiguReader/issues/90)
 enter: browser enter/quit full screen
 AD and left right arrow key: go to next/previous page
 +-: zoom image
+
+##### Caution
+If you find the images with file name containing Japanese Kanji/Kana, you will need to change the language setting:
+![unicode setting](screenshot/unicode-setting.png)
+But it's also reported that this setting will cause Mojibake in other softwares using non unicode encoding.
 
 ##### FAQ
     Q： I can open the webpage, but it is empty or 404.
