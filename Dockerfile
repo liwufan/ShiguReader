@@ -10,9 +10,9 @@ npm run build
 #二次打包
 FROM node:alpine
 WORKDIR /usr/src/app
-# 解压工具 缩图软件
-RUN apk add --no-cache imagemagick p7zip
 COPY --chown=node --from=build /usr/src/app .
+# 解压工具 缩图软件
+RUN apk add --no-cache imagemagick p7zip && chown -R node /usr/src/app
 # RUN chown -R node /usr/src/app
 
 USER node
