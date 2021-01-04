@@ -4,9 +4,10 @@ WORKDIR /usr/src/app
 COPY . .
 RUN apk add --no-cache python build-base && \
 npm install --no-progress && \
-npm install pkg && \
+npm install --no-progress pkg && \
 npm run build\
-./node_modules/.bin/pkg  src/server/index.js -t node14-linux-x64 --output ShiguReader
+pwd\
+/usr/src/app/node_modules/.bin/pkg  src/server/index.js -t node14-linux-x64 --output ShiguReader
 
 RUN mkdir Shigubin\
 mv ShiguReader Shigubin/ShiguReader\
