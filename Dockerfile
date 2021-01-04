@@ -6,16 +6,15 @@ RUN apk add --no-cache python build-base && \
 npm install --no-progress && \
 npm install --no-progress -g pkg && \
 npm run build &&\
-pwd &&\
 pkg src/server/index.js -t node14-linux-x64 --output ShiguReader
 
-RUN mkdir Shigubin\
-mv ShiguReader Shigubin/ShiguReader\
-cp -R dist Shigubin\
-cp -R public Shigubin\
-cp -R resource Shigubin\
-cp etc-config.ini Shigubin\
-cp path-config.ini Shigubin\
+RUN mkdir Shigubin &&\
+mv ShiguReader Shigubin/ShiguReader &&\
+cp -R dist Shigubin &&\
+cp -R public Shigubin &&\
+cp -R resource Shigubin &&\
+cp etc-config.ini Shigubin &&\
+cp path-config.ini Shigubin &&\
 cp move-path-config.ini Shigubin
 
 #二次打包
