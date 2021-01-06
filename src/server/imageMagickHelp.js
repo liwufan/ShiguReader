@@ -66,7 +66,18 @@ module.exports.isConertable = async function (filePath) {
         return "No magick installed";
     }
 
-    let text = "no_problem";
+    //check if already exist minfied version
+    //! hard-code here
+    const bookName = path.basename(filePath, path.extname(filePath));
+    const subfoldername = `from_${path.basename(path.dirname(filePath))}`
+    const convertSpace = path.join(getImgConverterCachePath(), subfoldername);
+    const outputFile = path.join(convertSpace, bookName + ".zip");
+
+    if((await isExist(outputFile))){
+        return "already minified"
+    }
+
+    let text = "allow_to_minify";
     return text;
 }
 
@@ -82,7 +93,7 @@ module.exports.minifyOneFile = async function (filePath) {
         //one folder for extract
         //one for minify image
         const bookName = path.basename(filePath, path.extname(filePath));
-        const subfoldername = `from ${path.basename(path.dirname(filePath))}`
+        const subfoldername = `from_${path.basename(path.dirname(filePath))}`
         const convertSpace = path.join(getImgConverterCachePath(), subfoldername);
         extractOutputPath = path.join(convertSpace, bookName + "-original");
         minifyOutputPath = path.join(convertSpace, bookName);
@@ -146,7 +157,7 @@ module.exports.minifyOneFile = async function (filePath) {
                     const timePerImg = timeSpent / (ii + 1) / 1000; // in second
                     const remaintime = (total - ii) * timePerImg;
                     if (ii + 1 < total) {
-                        console.log(`${ii + 1}/${total}      ${(timePerImg).toFixed(2)} second per file   ${remaintime.toFixed(2)} second before finish`);
+                        console.log(`${ii + 1}/${total}      ${(timePerImg).toFixed(2)}s per file   ${remaintime.toFixed(2)}s left`);
                     } else {
                         console.log(`${ii + 1}/${total}`);
                         // console.log("finish convertion. going to check if there is any error")
@@ -195,7 +206,7 @@ module.exports.minifyOneFile = async function (filePath) {
                 logFail(filePath, "pfs.utimes failed");
                 deleteCache(resultZipPath);
             } else {
-                logger.info("convertion done", filePath);
+                // logger.info("convertion done", filePath);
                 console.log("original size", filesizeUitl(oldStat.size, { base: 2 }));
                 console.log("new size", filesizeUitl(newStat.size, { base: 2 }));
                 console.log(`size reduce ${reducePercentage}%`);

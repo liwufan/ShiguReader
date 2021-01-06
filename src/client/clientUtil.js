@@ -131,6 +131,13 @@ module.exports.isAllowedToEnter = function () {
 //     return  str && str.replace(/(%)+$/g, "")
 // }
 
+module.exports.setSearchInputText = function (text) {
+    const input = document.getElementsByClassName('search-input');
+    if(input[0]){
+        input[0].value = text;
+    }  
+}
+
 module.exports.getSearchInputText = function () {
     const input = document.getElementsByClassName('search-input');
     return input[0] && input[0].value || "";
@@ -200,8 +207,10 @@ module.exports.saveFilePathToCookie = function (path) {
 
 module.exports.getHistoryFromCookie = function () {
     const timeToHash = Cookie.get();
-    let times = _.keys(timeToHash);
-    times = _.sortBy(times);
+    let times = _.keys(timeToHash)
+                 .map(e => parseInt(e))
+                 .filter(e => e && e > 0);
+    times = _.sortBy(times).reverse();
 
     const visited = {};
     const history = [];

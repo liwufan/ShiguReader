@@ -221,6 +221,18 @@ export default class ExplorerPage extends Component {
                     res = await Sender.postWithPromise("/api/search", { text: this.getSearchTextFromQuery(), mode: this.getMode() })
                 } else {
                     res = await Sender.postWithPromise('/api/lsDir', { dir: this.getTextFromQuery(), isRecursive: this.state.isRecursive });
+
+
+                    const api ="/api/listImageFolderContent"
+                    let res2 = await Sender.postWithPromise(api, { filePath: this.getTextFromQuery() });
+                    let { zipInfo, path, stat, files, musicFiles, videoFiles, mecab_tokens } = res2.json;
+                    files = files || [];
+                    musicFiles = musicFiles || [];
+                    if(files.length > 0 || musicFiles.length > 0){
+                        this.setState({
+                            isImgFolder: true
+                        })
+                    }
                 }
             }
         }
@@ -243,11 +255,14 @@ export default class ExplorerPage extends Component {
     }
 
     bindUserInteraction() {
-        document.addEventListener('keydown', this.handleKeyDown.bind(this));
+        this._handleKeyDown = this.handleKeyDown.bind(this);
+        document.addEventListener('keydown', this._handleKeyDown);
     }
 
     componentWillUnmount() {
-        document.removeEventListener("keydown", this.handleKeyDown.bind(this));
+        document.removeEventListener("keydown", this._handleKeyDown);
+
+        clientUtil.setSearchInputText("");
     }
 
     componentDidUpdate(prevProps, prevState) {
@@ -270,8 +285,19 @@ export default class ExplorerPage extends Component {
             this.imgFolderInfo = {};
             this.res = null;
             //init state
+            this.setState({
+                isImgFolder: false
+            })
+
             this.setStateAndSetHash(this.getInitState(true));
             this.askServer();
+        }
+
+        if (this.getMode() === MODE_TAG || this.getMode() === MODE_AUTHOR || this.getMode() === MODE_SEARCH) {
+            const text = this.getTextFromQuery();
+            clientUtil.setSearchInputText(text);
+        }else{
+            clientUtil.setSearchInputText("");
         }
     }
 
@@ -322,8 +348,6 @@ export default class ExplorerPage extends Component {
             this.forceUpdate();
         }
     }
-
-
 
     handleKeyDown(event) {
         //this cause input wont work 
@@ -600,7 +624,6 @@ export default class ExplorerPage extends Component {
 
         try {
             files = this.sortFiles(files, sortOrder);
-            videos = this.sortFiles(videos, sortOrder);
         } catch (e) {
             console.error(e);
         }
@@ -670,30 +693,30 @@ export default class ExplorerPage extends Component {
         //seperate av from others
         const groupByVideoType = _.groupBy(videos, item => {
             const text = getBaseName(item);
-            return util.isAv(text) ? "av" : "other";
+            const temp = parse(item);
+
+            if(util.isAv(text)){
+                return "av"
+            }else if(temp && temp.dateTag){
+                return "_date_";
+            }else {
+                return "etc";
+            }
         }) || {};
 
-        //todo duplicate code below
-        let normalVideos = [];
+        //todo av-color
+        const videoDivGroup = _.keys(groupByVideoType).map(key => {
+            let group = groupByVideoType[key];
+            group = this.sortFiles(group, FILENAME_UP);
+            const videoItems =  group.map((item) => {
+                        const toUrl = clientUtil.getVideoPlayerLink(item);
+                        const text = getBaseName(item);
+                        const result = this.getOneLineListItem(<i className="far fa-file-video"></i>, text, item);
+                        return <Link target="_blank" to={toUrl} key={item}>{result}</Link>;
+                    });
+            return <ItemsContainer key={key} className="video-list" items={videoItems} />
+        })
 
-        if (groupByVideoType["other"]) {
-            normalVideos = groupByVideoType["other"].map((item) => {
-                const toUrl = clientUtil.getVideoPlayerLink(item);
-                const text = getBaseName(item);
-                const result = this.getOneLineListItem(<i className="far fa-file-video"></i>, text, item);
-                return <Link target="_blank" to={toUrl} key={item}>{result}</Link>;
-            });
-        }
-
-        let avVideos = [];
-        if (groupByVideoType["av"]) {
-            avVideos = groupByVideoType["av"].map((item) => {
-                const toUrl = clientUtil.getVideoPlayerLink(item);
-                const text = getBaseName(item);
-                const result = this.getOneLineListItem(<i className="far fa-file-video av-color"></i>, text, item);
-                return <Link target="_blank" to={toUrl} key={item}>{result}</Link>;
-            });
-        }
 
         //! !todo if the file is already an image file
         files = this.getFileInPage(files);
@@ -709,7 +732,7 @@ export default class ExplorerPage extends Component {
             const fileSizeStr = fileSize && filesizeUitl(fileSize);
 
             const avgSize = this.hasFileSize(item) && this.getPageAvgSize(item);
-            const avgSizeStr = avgSize && filesizeUitl(avgSize);
+            const avgSizeStr = avgSize > 0 && filesizeUitl(avgSize);
 
             let seperator;
 
@@ -782,10 +805,10 @@ export default class ExplorerPage extends Component {
                                 {imgDiv}
                             </Link>
                             <div className={fileInfoRowCn}>
-                                <span title="file size">{fileSizeStr}</span>
+                                {fileSizeStr && <span title="file size">{fileSizeStr}</span>}
                                 {(hasZipInfo || isImgFolder) && <span>{`${pageNum} pages`}</span>}
                                 {hasMusic && <span>{`${musicNum} songs`}</span>}
-                                <span title="average img size"> {avgSizeStr} </span>
+                                {avgSizeStr && <span title="average img size"> {avgSizeStr} </span>}
                             </div>
                             <FileChangeToolbar isFolder={isImgFolder} hasMusic={hasMusic} className="explorer-file-change-toolbar" file={item} />
                         </div>
@@ -811,8 +834,7 @@ export default class ExplorerPage extends Component {
                     </div>
                 }
                 <ItemsContainer items={hddItems} neverCollapse />
-                <ItemsContainer className="video-list" items={normalVideos} />
-                <ItemsContainer items={avVideos} />
+                {videoDivGroup}
                 {this.renderPagination(filteredFiles, filteredVideos)}
                 {this.renderFilterMenu()}
                 {this.renderSortHeader()}
@@ -1000,6 +1022,8 @@ export default class ExplorerPage extends Component {
             </div>
         );
 
+        const onebookUrl = clientUtil.getOneBookLink(this.getTextFromQuery());
+
         let topButtons = (
             <div className="top-button-gropus row">
                 <div className="col-6 col-md-4"> {this.renderToggleFolferThumbNailButton()} </div>
@@ -1017,6 +1041,15 @@ export default class ExplorerPage extends Component {
                         <Link className="exp-top-button" target="_blank" to={url} >
                             <span className="fab fa-searchengin" />
                             <span>Search by Text </span>
+                        </Link>
+                    </div>
+                }
+                {
+                    (isExplorer && this.state.isImgFolder) &&
+                    <div className="col-6 col-md-4">
+                        <Link className="exp-top-button warning" target="_blank" to={onebookUrl} >
+                            <span className="fas fa-book-reader" />
+                            <span>Open in Book Mode </span>
                         </Link>
                     </div>
                 }

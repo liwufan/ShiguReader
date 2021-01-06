@@ -285,8 +285,8 @@ router.post('/api/listImageFolderContent', async (req, res) => {
 
     let result;
     const sqldb = db.getSQLDB();
-    let sql = `SELECT * FROM file_table WHERE filePath LIKE ? AND isDisplayableInOnebook = ?`;
-    let fake_zip_results = await sqldb.allSync(sql, [(filePath+ '%'), true]);
+    let sql = `SELECT * FROM file_table WHERE filePath LIKE ?`;
+    let fake_zip_results = await sqldb.allSync(sql, [(filePath+ '%')]);
 
     const _files = [];
 
@@ -305,12 +305,14 @@ router.post('/api/listImageFolderContent', async (req, res) => {
     mapping[filePath] = _files;
     const info = getImgFolderInfo(mapping)[filePath];
 
+    const mecab_tokens = await global.mecab_getTokens(filePath);
+
     //ugly code here
     result = {
         zipInfo: info,
         stat: info,
         path: filePath,
-        files, musicFiles, videoFiles
+        files, musicFiles, videoFiles, mecab_tokens
     };
     res.send(result);
 });
