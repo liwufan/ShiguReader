@@ -67,7 +67,6 @@ export default class ExplorerPage extends Component {
     constructor(prop) {
         super(prop);
         this.state = this.getInitState();
-        this.failedTimes = 0;
         this.files = [];
         this.dirs = [];
     }
@@ -104,8 +103,12 @@ export default class ExplorerPage extends Component {
     }
 
     setStateAndSetHash(state, callback) {
-        const obj = Object.assign({}, this.state, state);
+        // const time1 = util.getCurrentTime();
 
+        //??? this is slow after handleRes
+        this.setState(state, callback);
+
+        const obj = Object.assign({}, this.state, state);
         const obj2 = {};
         ["pageIndex",
             "isRecursive",
@@ -120,7 +123,10 @@ export default class ExplorerPage extends Component {
             })
 
         clientUtil.replaceUrlHash(queryString.stringify(obj2))
-        this.setState(state, callback);
+
+        // const time2 = util.getCurrentTime();
+        // const timeUsed = (time2 - time1) / 1000;
+        // console.log("[setState] ", timeUsed, "s")
     }
 
     handlePageChange(index) {
@@ -210,33 +216,37 @@ export default class ExplorerPage extends Component {
         let res;
         if (this.getMode() === MODE_HOME) {
             res = await Sender.postWithPromise("/api/homePagePath", {});
+            this.handleRes(res);
+        } else if (this.getMode() === MODE_EXPLORER) {
+            const hash = this.getTextFromQuery();
+            if (hash && this.loadedHash !== hash) {
+                res = await Sender.postWithPromise('/api/lsDir', { dir: this.getTextFromQuery(), isRecursive: this.state.isRecursive });
+                this.handleRes(res);
+
+                const api = "/api/listImageFolderContent"
+                let res2 = await Sender.postWithPromise(api, { filePath: this.getTextFromQuery(), noMedataInfo: true });
+                let { files, musicFiles, videoFiles } = res2.json;
+                files = files || [];
+                musicFiles = musicFiles || [];
+                if (files.length > 0 || musicFiles.length > 0) {
+                    this.setState({
+                        isImgFolder: true
+                    })
+                }
+            }
         } else {
             const hash = this.getTextFromQuery();
-            if (hash && this.loadedHash !== hash && this.failedTimes < 3) {
+            if (hash && this.loadedHash !== hash) {
                 if (this.getMode() === MODE_TAG) {
                     res = await Sender.postWithPromise("/api/search", { text: this.getTextFromQuery(), mode: this.getMode() })
                 } else if (this.getMode() === MODE_AUTHOR) {
                     res = await Sender.postWithPromise("/api/search", { text: this.getTextFromQuery(), mode: this.getMode() })
                 } else if (this.getMode() === MODE_SEARCH) {
                     res = await Sender.postWithPromise("/api/search", { text: this.getSearchTextFromQuery(), mode: this.getMode() })
-                } else {
-                    res = await Sender.postWithPromise('/api/lsDir', { dir: this.getTextFromQuery(), isRecursive: this.state.isRecursive });
-
-
-                    const api ="/api/listImageFolderContent"
-                    let res2 = await Sender.postWithPromise(api, { filePath: this.getTextFromQuery() });
-                    let { zipInfo, path, stat, files, musicFiles, videoFiles, mecab_tokens } = res2.json;
-                    files = files || [];
-                    musicFiles = musicFiles || [];
-                    if(files.length > 0 || musicFiles.length > 0){
-                        this.setState({
-                            isImgFolder: true
-                        })
-                    }
                 }
             }
+            this.handleRes(res);
         }
-        res && this.handleRes(res);
     }
 
 
@@ -296,7 +306,7 @@ export default class ExplorerPage extends Component {
         if (this.getMode() === MODE_TAG || this.getMode() === MODE_AUTHOR || this.getMode() === MODE_SEARCH) {
             const text = this.getTextFromQuery();
             clientUtil.setSearchInputText(text);
-        }else{
+        } else {
             clientUtil.setSearchInputText("");
         }
     }
@@ -327,7 +337,7 @@ export default class ExplorerPage extends Component {
 
             this.allfileInfos = _.extend({}, this.fileInfos, this.imgFolderInfo);
 
-            if (this.videoFiles.length > 0) {
+            if (this.videoFiles.length > 0 && !this.state.showVideo) {
                 this.setStateAndSetHash({
                     showVideo: true
                 });
@@ -344,7 +354,6 @@ export default class ExplorerPage extends Component {
             }
         } else {
             this.res = res;
-            this.failedTimes++;
             this.forceUpdate();
         }
     }
@@ -454,8 +463,8 @@ export default class ExplorerPage extends Component {
             return set;
         }
 
-  
-        if (this.isOn(FILTER_GOOD_AUTHOR) ) {
+
+        if (this.isOn(FILTER_GOOD_AUTHOR)) {
             files = files.filter(e => {
                 const temp = parse(e);
                 if (temp && temp.author) {
@@ -463,7 +472,7 @@ export default class ExplorerPage extends Component {
                         return e.tag === temp.author
                     });
 
-                    if(info[0] && info[0].good_count  > GOOD_STANDARD){
+                    if (info[0] && info[0].good_count > GOOD_STANDARD) {
                         return true;
                     }
                 }
@@ -634,12 +643,12 @@ export default class ExplorerPage extends Component {
             } else {
                 const str = this.getMode() === MODE_EXPLORER ? "This folder is empty" : "Empty Result";
                 return (
-                <div>
-                    {this.renderFilterMenu()}
-                    <div className="one-book-nothing-available">
-                        <div className="alert alert-secondary" role="alert">{str}</div>
-                    </div>
-                </div>);
+                    <div>
+                        {this.renderFilterMenu()}
+                        <div className="one-book-nothing-available">
+                            <div className="alert alert-secondary" role="alert">{str}</div>
+                        </div>
+                    </div>);
             }
         }
 
@@ -695,11 +704,11 @@ export default class ExplorerPage extends Component {
             const text = getBaseName(item);
             const temp = parse(item);
 
-            if(util.isAv(text)){
+            if (util.isAv(text)) {
                 return "av"
-            }else if(temp && temp.dateTag){
+            } else if (temp && temp.dateTag) {
                 return "_date_";
-            }else {
+            } else {
                 return "etc";
             }
         }) || {};
@@ -708,12 +717,12 @@ export default class ExplorerPage extends Component {
         const videoDivGroup = _.keys(groupByVideoType).map(key => {
             let group = groupByVideoType[key];
             group = this.sortFiles(group, FILENAME_UP);
-            const videoItems =  group.map((item) => {
-                        const toUrl = clientUtil.getVideoPlayerLink(item);
-                        const text = getBaseName(item);
-                        const result = this.getOneLineListItem(<i className="far fa-file-video"></i>, text, item);
-                        return <Link target="_blank" to={toUrl} key={item}>{result}</Link>;
-                    });
+            const videoItems = group.map((item) => {
+                const toUrl = clientUtil.getVideoPlayerLink(item);
+                const text = getBaseName(item);
+                const result = this.getOneLineListItem(<i className="far fa-file-video"></i>, text, item);
+                return <Link target="_blank" to={toUrl} key={item}>{result}</Link>;
+            });
             return <ItemsContainer key={key} className="video-list" items={videoItems} />
         })
 
@@ -741,9 +750,9 @@ export default class ExplorerPage extends Component {
                 const prev = files[index - 1];
                 if (!prev || getDir(prev) !== getDir(item)) {
                     seperator = (<div className="col-12" key={item + "---seperator"}>
-                        <Breadcrumb sep={this.context.file_path_sep} 
-                                    server_os={this.context.server_os} 
-                                    path={getDir(item)} className={breadcrumbCount > 0 ? "not-first-breadcrumb folder-seperator" : "folder-seperator"} />
+                        <Breadcrumb sep={this.context.file_path_sep}
+                            server_os={this.context.server_os}
+                            path={getDir(item)} className={breadcrumbCount > 0 ? "not-first-breadcrumb folder-seperator" : "folder-seperator"} />
                     </div>);
                     breadcrumbCount++;
                 }
@@ -866,7 +875,6 @@ export default class ExplorerPage extends Component {
             pageIndex: 1,
             isRecursive: !this.state.isRecursive
         }, () => {
-            this.failedTimes = 0;
             // this.requestLsDir();
             (async () => {
                 let res = await Sender.postWithPromise('/api/lsDir', { dir: this.getTextFromQuery(), isRecursive: this.state.isRecursive });
@@ -1057,9 +1065,9 @@ export default class ExplorerPage extends Component {
             </div>);
 
         const breadcrumb = isExplorer && (<div className="row">
-            <Breadcrumb sep={this.context.file_path_sep} 
-                        server_os={this.context.server_os} 
-                        path={this.getPathFromQuery()} className="col-12" />
+            <Breadcrumb sep={this.context.file_path_sep}
+                server_os={this.context.server_os}
+                path={this.getPathFromQuery()} className="col-12" />
         </div>);
 
         return (<div className="container explorer-top-bar-container">
@@ -1178,7 +1186,7 @@ export default class ExplorerPage extends Component {
     }
 
     renderSideMenu(filteredFiles, filteredVideos) {
-        if (this.getMode() === MODE_HOME) {
+        if (this.getMode() === MODE_HOME || !this.state.anchorSideMenu) {
             return;
         }
 
@@ -1288,7 +1296,7 @@ export default class ExplorerPage extends Component {
     }
 
     renderFilterMenu() {
-        if(this.getMode() === MODE_HOME){
+        if (this.getMode() === MODE_HOME) {
             return;
         }
 

@@ -22,20 +22,24 @@ function splitRows(rows, text){
     const textInLowerCase = text.toLowerCase();
 
     rows.forEach(row => {
-        const dirName = path.dirname(row.filePath);
-        if(row.isDisplayableInExplorer){
+        const dirName = path.basename(row.dirPath);
+        const byDir = dirName.toLowerCase().includes(textInLowerCase);
+        const byFn = row.fileName.toLowerCase().includes(textInLowerCase);
+
+        if(row.isDisplayableInExplorer && (byFn || byDir )){
+            //for file, its name or its dir name
             zipResult.push(row);
-        }else if(row.isDisplayableInOnebook){
-            if(dirName.toLowerCase().includes(textInLowerCase)){
-                imgFolders[dirName] = imgFolders[dirName] || [];
-                imgFolders[dirName].push(row.filePath);
-            }
-        }else {
-            if(dirName.toLowerCase().includes(textInLowerCase)){
-                dirResults.push(row);
-            }
-        }
+        }else if(row.isDisplayableInOnebook && byDir){
+            imgFolders[dirName] = imgFolders[dirName] || [];
+            imgFolders[dirName].push(row.filePath);
+        }else if(row.isFolder && byFn){
+            //folder check its name 
+            dirResults.push(row);
+        } 
     })
+
+    dirResults = dirResults.map(obj => { return obj.filePath; });
+    dirResults = _.unique(dirResults);
 
     return {
         zipResult,
@@ -46,8 +50,8 @@ function splitRows(rows, text){
 
 async function searchByText(text) {
     const sqldb = db.getSQLDB();
-    let sql = `SELECT * FROM file_table WHERE filePath LIKE ?`;
-    let rows = await sqldb.allSync(sql, [( '%' + text + '%')]);
+    let sql = `SELECT * FROM file_table WHERE INSTR(filePath, ?) > 0`;
+    let rows = await sqldb.allSync(sql, [text]);
     return splitRows(rows, text);
 }
 
@@ -66,8 +70,8 @@ async function searchByTagAndAuthor(tag, author, text, onlyNeedFew) {
         //inner joiner then group by
         let sql = `SELECT a.* ` 
         + `FROM file_table AS a INNER JOIN tag_table AS b `
-        + `ON a.filePath = b.filePath AND b.tag LIKE ?`;
-        let rows = await sqldb.allSync(sql, [( '%' + _text + '%')]);
+        + `ON a.filePath = b.filePath AND INSTR(b.tag, ?) > 0`;
+        let rows = await sqldb.allSync(sql, [_text]);
         const tag_obj = splitRows(rows, _text);
         zipResult = tag_obj.zipResult;
         dirResults = tag_obj.dirResults;
@@ -79,8 +83,7 @@ async function searchByTagAndAuthor(tag, author, text, onlyNeedFew) {
         fileInfos[pp] = db.getFileToInfo(pp);
     })
 
-    let _dirs = dirResults.map(obj => { return obj.filePath; });
-    _dirs = _.unique(_dirs);
+   
 
     let end = (new Date).getTime();
     // console.log((end - beg)/1000, "to search");
@@ -92,7 +95,7 @@ async function searchByTagAndAuthor(tag, author, text, onlyNeedFew) {
     return {
         tag, author, fileInfos,
         imgFolders, imgFolderInfo,
-        dirs: _dirs, 
+        dirs: dirResults, 
         thumbnails: getThumbnails(files), 
         zipInfo: getZipInfo(files)
     };

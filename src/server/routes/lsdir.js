@@ -17,6 +17,7 @@ const { getZipInfo } = zipInfoDb;
 const { getThumbnails, isAlreadyScan } = serverUtil.common;
 const _ = require('underscore');
 const readdir = require("../readdir");
+const stringHash = require("string-hash");
 
 router.post('/api/listFolderOnly', async (req, res) => {
     let dir = req.body && req.body.dir;
@@ -109,7 +110,26 @@ async function listNoScanDir(dir, res){
     res.send(result);
 }
 
+function getThumbnailForFolder(files, dirPath){
+    if(files && files.length > 0){
+        serverUtil.sortFileNames(files);
+        let thumbnail;
+        let ii = 0;
+        while(!thumbnail && ii < files.length){
+            let tf = path.resolve(dirPath, files[ii]);
 
+            if(isImage(tf)){
+                thumbnail = tf;
+                break;
+            }
+
+            thumbnail = getThumbnails(tf);
+            ii++;
+        }
+
+        return thumbnail;
+    }
+}
 
 router.post('/api/lsDir', async (req, res) => {
     let dir = req.body && req.body.dir;
@@ -131,132 +151,124 @@ router.post('/api/lsDir', async (req, res) => {
         return;
     }
 
-    const time1 = getCurrentTime();
-    let result;
-    const dirs = [];
-    let fileInfos = {};
-    const pTokens = dir.split(path.sep);
-    const plength = pTokens.length;
-
     const sqldb = db.getSQLDB();
-    let sql = `SELECT * FROM file_table WHERE filePath LIKE ? AND isDisplayableInExplorer = ?`;
-    let rows = await sqldb.allSync(sql, [(dir+ '%'), true]);
-    rows = rows.filter(obj => isSub(dir, obj.filePath));
+    const suffix = stringHash(dir);
+    const tempFileTable = "TEMP.FILE_TABLE_" + suffix;
+    const tempDirTable = "TEMP.DIR_TABLE_" + suffix;
 
-    //dir -> its file
-    const dirToFiles = {};
+    try {
+        const time1 = getCurrentTime();
+        let time2, timeUsed;
+        const dirThumbnails = {};
+        let dirs = [];
+        let fileInfos = {};
 
-    function addParent(pp) {
-        //add file's parent dir
-        //because we do not track dir in the server
-        //for example
-        //the dir is     F:/git 
-        //the file is    F:/git/a/b/1.zip
-        //add folder           F:/git/a
-        const cTokens = pp.split(path.sep);
-        let itsParent = pTokens.concat(cTokens[plength]);
-        const np = itsParent.join(path.sep);
-        dirs.push(np);
+        let sql, rows;
 
-        return np;
-    }
+        const sep = "|---|"
 
-    rows.forEach(obj => {
-        const pp = obj.filePath;
-        if (pp === dir) {
-            return;
-        }
-        if (isRecursive) {
-            fileInfos[pp] = getFileToInfo(pp);
-        } else {
-            if (isDirectParent(dir, pp)) {
-                fileInfos[pp] = getFileToInfo(pp);
-            } else {
-                const np = addParent(pp);
-                dirToFiles[np] = dirToFiles[np] || [];
-                dirToFiles[np].push(pp);
-            }
-        }
-    })
+        //limit the searching  within this dir
+        sql = `CREATE TABLE ${tempFileTable} AS SELECT * FROM file_table WHERE INSTR(filePath, ?) = 1`;
+        await sqldb.runSync(sql, [dir]);
 
-    let sql2 = `SELECT * FROM file_table WHERE filePath LIKE ? AND isDisplayableInOnebook = ?`;
-    let img_files_rows = await sqldb.allSync(sql2, [(dir+ '%'), true]);
-    img_files_rows = img_files_rows.filter(obj => isSub(dir, obj.filePath));
+        //todo: LIMIT 0, 5 group by
+        //-------------- dir --------------
+        if(!isRecursive){
+            sql = `CREATE TABLE ${tempDirTable} AS SELECT * FROM ${tempFileTable} WHERE dirPath = ? AND isFolder = true`;
+            await sqldb.runSync(sql, [dir]);
 
-    const imgFolders = {};
+            //todo: group_concat is ugly
+            // in order to get folder's files, join file_Table and then group by
+            sql = `SELECT a.filePath, group_concat(b.fileName, '${sep}') as files ` +
+                `FROM ${tempDirTable} AS a LEFT JOIN ` + 
+                `${tempFileTable} AS b `+ 
+                `ON a.filePath = b.dirPath ` + 
+                `GROUP by a.fileName `
+                
+            rows = await sqldb.allSync(sql);
 
-    img_files_rows.forEach(obj => {
-        //reduce by its parent folder
-        const pp = path.dirname(obj.filePath);
-        if (pp === dir) {
-            return;
-        }
-
-        if (isRecursive) {
-            imgFolders[pp] = imgFolders[pp] || [];
-            imgFolders[pp].push(obj.filePath);
-        } else {
-            if (isDirectParent(dir, pp)) {
-                imgFolders[pp] = imgFolders[pp] || [];
-                imgFolders[pp].push(obj.filePath);
-            } else {
-                const np = addParent(pp);
-                dirToFiles[np] = dirToFiles[np] || [];
-                dirToFiles[np].push(obj.filePath);
-            }
-        }
-    })
-
-    const imgFolderInfo = getImgFolderInfo(imgFolders);
-
-    const time2 = getCurrentTime();
-    const timeUsed = (time2 - time1) / 1000;
-    console.log(timeUsed, "to LsDir")
-
-    const files = _.keys(fileInfos);
-    const _dirs = _.uniq(dirs);
-
-
-    const dirThumbnails = {};
-    _dirs.map(dirPath => {
-        const files = dirToFiles[dirPath];
-        serverUtil.sortFileNames(files);
-        //todo? use 0 for now
-        if(files && files.length > 0){
-            let thumbnail;
-            let ii = 0;
-            while(!thumbnail && ii < files.length){
-                let tf = files[ii];
-
-                if(isImage(tf)){
-                    thumbnail = tf;
-                    break;
+            dirs = rows.map(e => e.filePath);
+            rows.forEach(row => {
+                if(!row.files){
+                    return;
                 }
+                const dirPath = row.filePath;
+                const files = row.files.split(sep);
 
-                thumbnail = getThumbnails(tf);
-                ii++;
-            }
-            if(thumbnail){
-                dirThumbnails[dirPath] =  thumbnail;
-            }
+                dirThumbnails[dirPath] = getThumbnailForFolder(files, dirPath)
+            })
         }
-    })
 
-    result = {
-        path: dir,
-        dirs: _dirs,
-        fileInfos,
-        imgFolderInfo,
-        imgFolders,
-        thumbnails: getThumbnails(files),
-        dirThumbnails,
-        zipInfo: getZipInfo(files),
-    };
-    res.send(result);
+        //-------------------files -----------------
+        if(isRecursive){
+            sql = `SELECT filePath FROM ${tempFileTable} WHERE isDisplayableInExplorer = true`;
+            rows = await sqldb.allSync(sql);
+        }else{
+            sql = `SELECT filePath FROM ${tempFileTable} WHERE dirPath = ? AND isDisplayableInExplorer = true`;
+            rows = await sqldb.allSync(sql, [dir]);
+        }
+        rows.forEach(obj => {
+            const pp = obj.filePath;
+            if (pp === dir) {
+                return;
+            }
+            fileInfos[pp] = getFileToInfo(pp);
+        })
+
+        //---------------img folder -----------------
+        const imgFolders = {};
+        sql = `SELECT dirPath, group_concat(fileName, '${sep}') AS files ` +
+            `FROM ${tempFileTable} WHERE isDisplayableInOnebook = true ` +
+            `GROUP BY dirPath`;
+        rows = await sqldb.allSync(sql);
+        rows.forEach(row => {
+            const pp = row.dirPath;
+            if (pp === dir || !row.files) {
+                return;
+            }
+            if(!isRecursive && !isDirectParent(dir, pp)){
+                return;
+            }
+            const files =  row.files.split(sep);
+            imgFolders[pp] = files.map(e => path.resolve(pp, e));
+        })
+
+        //-------------get extra info
+        // time2 = getCurrentTime();
+        // timeUsed = (time2 - time1) / 1000;
+        // console.log("[/api/LsDir] sql time", timeUsed, "s")
+
+        const imgFolderInfo = getImgFolderInfo(imgFolders);
+        const files = _.keys(fileInfos);
+        const result = {
+            path: dir,
+            dirs: dirs,
+            fileInfos,
+            imgFolderInfo,
+            imgFolders,
+            thumbnails: getThumbnails(files),
+            dirThumbnails,
+            zipInfo: getZipInfo(files),
+        };
+
+        // const time3 = getCurrentTime();
+        // timeUsed = (time3 - time2) / 1000;
+        // console.log("[/api/LsDir] info look", timeUsed, "s")
+        res.send(result);
+    }catch(e){
+
+    }finally {
+        //drop
+        sql = `DROP TABLE IF EXISTS ${tempFileTable}`;
+        sqldb.run(sql);
+        sql = `DROP TABLE IF EXISTS ${tempDirTable}`
+        sqldb.run(sql);
+    }
 });
 
 router.post('/api/listImageFolderContent', async (req, res) => {
     let filePath = req.body && req.body.filePath;
+    const noMedataInfo = req.body && req.body.noMedataInfo;
     if (!filePath || !(await isExist(filePath))) {
         console.error("[/api/listImageFolderContent]", filePath, "does not exist");
         res.send({ failed: true, reason: "NOT FOUND" });
@@ -285,8 +297,8 @@ router.post('/api/listImageFolderContent', async (req, res) => {
 
     let result;
     const sqldb = db.getSQLDB();
-    let sql = `SELECT * FROM file_table WHERE filePath LIKE ?`;
-    let fake_zip_results = await sqldb.allSync(sql, [(filePath+ '%')]);
+    let sql = `SELECT filePath FROM file_table WHERE INSTR(filePath, ?) = 1`;
+    let fake_zip_results = await sqldb.allSync(sql, [filePath]);
 
     const _files = [];
 
@@ -303,9 +315,12 @@ router.post('/api/listImageFolderContent', async (req, res) => {
 
     const mapping = {};
     mapping[filePath] = _files;
-    const info = getImgFolderInfo(mapping)[filePath];
 
-    const mecab_tokens = await global.mecab_getTokens(filePath);
+    let info, mecab_tokens;
+    if(!noMedataInfo){
+        info = getImgFolderInfo(mapping)[filePath];
+        mecab_tokens = await global.mecab_getTokens(filePath);
+    }
 
     //ugly code here
     result = {
