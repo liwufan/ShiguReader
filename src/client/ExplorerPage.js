@@ -317,7 +317,9 @@ export default class ExplorerPage extends Component {
 
     handleRes(res) {
         if (!res.isFailed()) {
-            let { dirs, mode, tag, author, fileInfos, thumbnails, dirThumbnails, zipInfo, imgFolders, imgFolderInfo, hdd_list } = res.json;
+            let { dirs, mode, tag, author, fileInfos, thumbnails,
+                 dirThumbnails, zipInfo, imgFolders, imgFolderInfo, 
+                 hdd_list, quickAccess } = res.json;
             this.loadedHash = this.getTextFromQuery();
             this.mode = mode;
             this.fileInfos = fileInfos || {};
@@ -333,6 +335,7 @@ export default class ExplorerPage extends Component {
             this.imgFolders = imgFolders || {};
             this.imgFolderInfo = imgFolderInfo || {};
             this.hdd_list = hdd_list || [];
+            this.quickAccess = quickAccess || [];
             this.res = res;
 
             this.allfileInfos = _.extend({}, this.fileInfos, this.imgFolderInfo);
@@ -463,18 +466,32 @@ export default class ExplorerPage extends Component {
             return set;
         }
 
+        const { authorInfo } = this.state;
 
-        if (this.isOn(FILTER_GOOD_AUTHOR)) {
+        function getCount(fn){
+            const temp = parse(fn);
+            if (temp && temp.author) {
+                const info = authorInfo.filter(e => {
+                    return e.tag === temp.author
+                });
+               return info[0];
+            }
+        }
+
+        if (this.isOn(FILTER_GOOD_AUTHOR) && authorInfo) {
             files = files.filter(e => {
-                const temp = parse(e);
-                if (temp && temp.author) {
-                    const info = this.state.authorInfo.filter(e => {
-                        return e.tag === temp.author
-                    });
+                const count = getCount(e);
+                if (count && count.good_count > GOOD_STANDARD) {
+                    return true;
+                }
+            })
+        }
 
-                    if (info[0] && info[0].good_count > GOOD_STANDARD) {
-                        return true;
-                    }
+        if (this.isOn(FILTER_FIRST_TIME)  && authorInfo) {
+            files = files.filter(e => {
+                const count = getCount(e);
+                if (count && (count.good_count + count.bad_count ) === 1) {
+                    return true;
                 }
             })
         }
@@ -482,16 +499,6 @@ export default class ExplorerPage extends Component {
         if (this.isOn(FILTER_OVERSIZE)) {
             files = files.filter(e => {
                 return this.getPageAvgSize(e) / 1024 / 1024 > userConfig.oversized_image_size
-            })
-        }
-
-        if (this.isOn(FILTER_FIRST_TIME) && goodSet && otherSet) {
-            files = files.filter(e => {
-                const temp = parse(e);
-                if (temp && temp.author && ((goodSet[temp.author] || 0) + (otherSet[temp.author] || 0)) <= 1) {
-
-                    return e;
-                }
             })
         }
 
@@ -687,7 +694,7 @@ export default class ExplorerPage extends Component {
             });
         }
 
-        let hddItems;
+        let hddItems, quickAccess;
         if (this.getMode() == MODE_HOME) {
             hddItems = this.hdd_list.map((item) => {
                 // const toUrl = clientUtil.getExplorerLink(item);
@@ -697,6 +704,17 @@ export default class ExplorerPage extends Component {
                 const result = this.getOneLineListItem(<i className="far fa-folder"></i>, text, item);
                 return <Link to={toUrl} key={item}>{result}</Link>;
             });
+
+            quickAccess = this.quickAccess;
+            quickAccess = quickAccess.filter(e => {
+                return !dirs.includes(e) && !this.hdd_list.includes(e);
+            });
+            quickAccess = quickAccess.map(item => {
+                const toUrl = clientUtil.getExplorerLink(item);
+                const text = item;
+                const result = this.getOneLineListItem(<i className="far fa-folder"></i>, text, item);
+                return <Link to={toUrl} key={item}>{result}</Link>;
+            })
         }
 
         //seperate av from others
@@ -842,6 +860,7 @@ export default class ExplorerPage extends Component {
                         </div>
                     </div>
                 }
+                <ItemsContainer items={quickAccess} neverCollapse />
                 <ItemsContainer items={hddItems} neverCollapse />
                 {videoDivGroup}
                 {this.renderPagination(filteredFiles, filteredVideos)}
@@ -916,7 +935,7 @@ export default class ExplorerPage extends Component {
     }
 
     renderToggleThumbNailButton() {
-        const text2 = this.state.noThumbnail ? "File Name Only" : "Show File as Thumbnail";
+        const text2 = this.state.noThumbnail ? "File Thumbnail" : "File Name Only";
         return (
             <span key="thumbnail-button" className="thumbnail-button exp-top-button" onClick={this.toggleThumbNail.bind(this)}>
                 <span className="fas fa-book" /> <span>{text2} </span>
@@ -925,7 +944,7 @@ export default class ExplorerPage extends Component {
     }
 
     renderToggleFolferThumbNailButton() {
-        const text2 = this.state.showFolderThumbnail ? "Folder Name Only" : "Show Folder as Thumbnail";
+        const text2 = this.state.showFolderThumbnail ? "Folder Name Only" : "Folder Thumbnail";
         return (
             <span key="folder-thumbnail-button" className="thumbnail-button exp-top-button" onClick={this.toggleFolderThumbNail.bind(this)}>
                 <span className="fas fa-book" /> <span>{text2} </span>
@@ -1011,6 +1030,22 @@ export default class ExplorerPage extends Component {
         );
     }
 
+    getBookModeLink(){
+        const onebookUrl = clientUtil.getOneBookLink(this.getTextFromQuery());
+        return (
+            <Link className="exp-top-button warning" target="_blank" to={onebookUrl} >
+            <span className="fas fa-book-reader" />
+            <span>Open in Book Mode </span>
+            </Link>
+        )
+    }
+
+    isImgFolder(){
+        const mode = this.getMode();
+        const isExplorer = mode === MODE_EXPLORER && this.getPathFromQuery();
+        return isExplorer && this.state.isImgFolder;
+    }
+
     getExplorerToolbar(filteredFiles, filteredVideos) {
         const mode = this.getMode();
         if (mode === MODE_HOME) {
@@ -1029,8 +1064,6 @@ export default class ExplorerPage extends Component {
                 {`Warning: ${this.getTextFromQuery()} is not included in path-config.`}
             </div>
         );
-
-        const onebookUrl = clientUtil.getOneBookLink(this.getTextFromQuery());
 
         let topButtons = (
             <div className="top-button-gropus row">
@@ -1052,13 +1085,9 @@ export default class ExplorerPage extends Component {
                         </Link>
                     </div>
                 }
-                {
-                    (isExplorer && this.state.isImgFolder) &&
+                {   this.isImgFolder() &&
                     <div className="col-6 col-md-4">
-                        <Link className="exp-top-button warning" target="_blank" to={onebookUrl} >
-                            <span className="fas fa-book-reader" />
-                            <span>Open in Book Mode </span>
-                        </Link>
+                        {this.getBookModeLink()}
                     </div>
                 }
                 <div className="col-6 col-md-4 " > {this.renderToggleMenuButton()} </div>

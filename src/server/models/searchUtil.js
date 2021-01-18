@@ -8,6 +8,10 @@ const { getZipInfo } = zipInfoDb;
 const util = global.requireUtil();
 const path = require('path');
 const _ = require('underscore');
+const isWindows = require('is-windows');
+const pathUtil = require("../pathUtil");
+const { isSub } = pathUtil;
+
 
 function isEqual(a, b) {
     a = a || "";
@@ -48,6 +52,44 @@ function splitRows(rows, text){
     }
 }
 
+async function searchOnEverything(text){
+    const everything_connector = require("../../tools/everything_connector");	
+    const etc_config = global.etc_config;
+    const port = etc_config && etc_config.everything_http_server_port;
+    const {cachePath, thumbnailFolderPath} = global;
+
+    function isNotAllow(fp){
+        const arr = [cachePath, thumbnailFolderPath ];
+        return arr.some(e => {
+            if(isEqual(fp, e) || isSub(e, fp)){
+                return true;
+            }
+        })
+    }
+
+    const config = {	
+        port,
+        filter: (fp, info) => {
+            if(isNotAllow(fp)){
+                return false;
+            }
+
+            if(info.type === "folder"){
+                return true;
+            }
+
+            if(util.isDisplayableInExplorer(fp)){
+                return true;
+            }
+        }
+    };
+
+    
+    if(port && isWindows()){
+        return await everything_connector.searchByText(text, config);
+    }
+}
+
 async function searchByText(text) {
     const sqldb = db.getSQLDB();
     let sql = `SELECT * FROM file_table WHERE INSTR(filePath, ?) > 0`;
@@ -59,20 +101,21 @@ async function searchByTagAndAuthor(tag, author, text, onlyNeedFew) {
     let beg = (new Date).getTime()
     const fileInfos = {};
 
-    let temp = await searchByText(tag || author || text);
+    const all_text = tag || author || text;
+    let temp = await searchByText(all_text);
     let zipResult = temp.zipResult;
     let dirResults = temp.dirResults;
     let imgFolders = temp.imgFolders;
 
-    if (tag || author) {
+    const at_text = tag || author;
+    if (at_text) {
         const sqldb = db.getSQLDB();
-        const _text = tag || author;
         //inner joiner then group by
         let sql = `SELECT a.* ` 
         + `FROM file_table AS a INNER JOIN tag_table AS b `
         + `ON a.filePath = b.filePath AND INSTR(b.tag, ?) > 0`;
-        let rows = await sqldb.allSync(sql, [_text]);
-        const tag_obj = splitRows(rows, _text);
+        let rows = await sqldb.allSync(sql, [at_text]);
+        const tag_obj = splitRows(rows, at_text);
         zipResult = tag_obj.zipResult;
         dirResults = tag_obj.dirResults;
         imgFolders = tag_obj.imgFolders;
@@ -82,11 +125,17 @@ async function searchByTagAndAuthor(tag, author, text, onlyNeedFew) {
         const pp = obj.filePath;
         fileInfos[pp] = db.getFileToInfo(pp);
     })
-
    
 
     let end = (new Date).getTime();
     // console.log((end - beg)/1000, "to search");
+
+    let esObj = await searchOnEverything(all_text);
+    if(esObj){
+        dirResults = _.uniq(dirResults.concat(esObj.dirResults));
+        _.extend(fileInfos, esObj.fileInfos)
+    }
+
 
     const imgFolderInfo = getImgFolderInfo(imgFolders);
 

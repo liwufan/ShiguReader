@@ -81,6 +81,13 @@ module.exports.isConertable = async function (filePath) {
     return text;
 }
 
+function isImgConvertable(fileName, size){
+    return isImage(fileName) && !isGif(fileName) && size > img_convert_min_threshold;
+}
+
+const userful_percent = 20;
+
+
 //ONLY KEEP THE CORRECT FILES IN FOLDER AFTER EVERYTHING
 module.exports.minifyOneFile = async function (filePath) {
     let extractOutputPath;
@@ -136,8 +143,7 @@ module.exports.minifyOneFile = async function (filePath) {
                     continue;
                 }
                 const oldSize = stat.size;
-                let simplyCopy = !isImage(fname) || isGif(fname);
-                simplyCopy = simplyCopy || (isImage(fname) && oldSize < img_convert_min_threshold)
+                let simplyCopy = !isImgConvertable(fname, oldSize)
 
                 if (simplyCopy) {
                     const outputImgPath = path.resolve(minifyOutputPath, fname);
@@ -193,7 +199,6 @@ module.exports.minifyOneFile = async function (filePath) {
         }
         const newStat = await getStat(resultZipPath);
         const reducePercentage = (100 - newStat.size / oldStat.size * 100).toFixed(2);
-        const userful_percent = 20;
         console.log(`[imageMagickHelp] size reduce ${reducePercentage}%`);
 
         if (reducePercentage < userful_percent) {

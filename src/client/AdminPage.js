@@ -27,6 +27,18 @@ export default class AdminPage extends Component {
         this.askCacheInfo();
         this.requestHomePagePathes();
         this.askMinifyQueue();
+        this.requestHistory();
+    }
+
+    requestHistory() {
+        Sender.post("/api/getHistory", {}, res => {
+            let { history } = res.json;
+            history = history || [];
+            history.forEach(e => {
+                e.time = parseInt(e.time);
+            })
+            this.setState({history})
+        });
     }
 
     askMinifyQueue() {
@@ -99,10 +111,10 @@ export default class AdminPage extends Component {
     }
 
     renderHistory() {
-        const history = clientUtil.getHistoryFromCookie();
+        const { history } = this.state;
 
         const groupByDay = _.groupBy(history, e => {
-            let d = new Date(e[0].getTime());
+            let d = new Date(e.time);
             d.setHours(0);
             d.setMinutes(0);
             d.setSeconds(0);
@@ -114,10 +126,10 @@ export default class AdminPage extends Component {
             const timeStr = dateFormat(new Date(parseInt(key)), "dddd, mmmm dS, yyyy");
             let items = groupByDay[key];
 
-            items = _.sortBy(items, e => e[0].getTime());
+            items = _.sortBy(items, e => -e.time);
 
             const dayHistory = items.map(e => {
-                const filePath = e[1];
+                const filePath = e.filePath;
                 const toUrl = util.isVideo(filePath)? 
                               clientUtil.getVideoPlayerLink(filePath) : 
                               clientUtil.getOneBookLink(filePath);
@@ -132,7 +144,7 @@ export default class AdminPage extends Component {
             })
 
             return (
-                <div className="history-day-section">
+                <div className="history-day-section" key={key}>
                     <div className="date-text">
                         <span>{timeStr}</span>
                         <span>{`${items.length} items`}</span>
@@ -257,13 +269,11 @@ export default class AdminPage extends Component {
         const size = totalSize && clientUtil.filesizeUitl(totalSize);
         let cacheInfo;
 
-        if (size) {
-            cacheInfo =
-                <div className="cache-info">
-                    <div className="cache-info-row">{`total size: ${size}`} </div>
-                    <div className="cache-info-row">{`${cacheNum} files can be deleted`} </div>
-                </div>
-        }
+        cacheInfo =(
+            <div className="cache-info">
+                <div className="cache-info-row">{`cache size: ${size}`} </div>
+                <div className="cache-info-row">{`cache file number: ${cacheNum}`} </div>
+            </div>);
 
         return (
             <div className="admin-container container">
@@ -277,7 +287,7 @@ export default class AdminPage extends Component {
                             options={folder_list} name="pregenerate" onChange={this.onPathChange.bind(this)} />
                         <input className="admin-intput" ref={pathInput => this.pathInputRef = pathInput} placeholder="...or any other path" />
                         <div className="submit-button" onClick={this.onPrenerate.bind(this)}>Full Update (Regenerate all data and thumbnail)</div>
-                        <div className="submit-button" onClick={this.onPrenerate.bind(this, true)}>Fast Update (Only generate new file)</div>
+                        <div className="submit-button" onClick={this.onPrenerate.bind(this, true)}>Fast Update (Only generate for new file)</div>
                     </div>
                 </div>
 

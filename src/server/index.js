@@ -31,15 +31,18 @@ const { isHiddenFile } = serverUtil;
 
 const { fullPathToUrl, generateContentUrl, isExist, getScanPath } = pathUtil;
 const { isImage, isCompress, isVideo, isMusic, arraySlice,
-    getCurrentTime, isDisplayableInExplorer, isDisplayableInOnebook, escapeRegExp } = util;
+        getCurrentTime, isDisplayableInExplorer, isDisplayableInOnebook } = util;
 
 //set up path
 const rootPath = pathUtil.getRootPath();
 const { cache_folder_name, thumbnail_folder_name, view_img_folder } = userConfig
 const cachePath = path.join(rootPath, cache_folder_name);
 const thumbnailFolderPath = path.join(rootPath, thumbnail_folder_name);
+global.thumbnailFolderPath = thumbnailFolderPath;
 global.cachePath = cachePath;
 
+const thumbnailDb = require("./models/thumbnailDb");
+const historyDb = require("./models/historyDb");
 
 //set up user path
 
@@ -55,16 +58,13 @@ console.log("rootPath", rootPath);
 console.log("----------------------");
 
 const logger = require("./logger");
-
 const searchByTagAndAuthor = require("./models/searchUtil");
-
 
 //set up json DB
 const zipInfoDb = require("./models/zipInfoDb");
 let zip_content_db_path = path.join(rootPath, userConfig.workspace_name, "zip_info");
 zipInfoDb.init(zip_content_db_path);
 const { getPageNum, getMusicNum, deleteFromZipDb, getZipInfo } = zipInfoDb;
-
 
 const sevenZipHelp = require("./sevenZipHelp");
 const { listZipContentAndUpdateDb, extractAll, extractByRange } = sevenZipHelp;
@@ -87,11 +87,9 @@ app.use(express.json());
 const portConfig = require('../config/port-config');
 const { http_port, dev_express_port } = portConfig;
 
-let thumbnailDb = {};
 
-const jsonfile = require('jsonfile');
-let temp_json_path = path.join(rootPath, userConfig.workspace_name, "temp_json_info.json");
-
+// const jsonfile = require('jsonfile');
+// let temp_json_path = path.join(rootPath, userConfig.workspace_name, "temp_json_info.json");
 
 async function mkdir(path, quiet) {
     if (path && !(await isExist(path))) {
@@ -114,6 +112,7 @@ let etc_config = {};
 try{
     let fcontent = fs.readFileSync(path.resolve(rootPath, "etc-config.ini"), 'utf-8');
     etc_config = ini.parse(fcontent);
+    global.etc_config = etc_config;
 }catch(e){
     //nothing
     console.warn(e);
@@ -182,14 +181,15 @@ async function init() {
         cleanCache.cleanCache(cachePath);
         setUpCacheWatch();
 
-        initMecab();
+        const mecabHelper = require("./mecabHelper");
+        mecabHelper.init();
     
         end1 = (new Date).getTime();
         let thumbnail_pathes = await pfs.readdir(thumbnailFolderPath);
         thumbnail_pathes = thumbnail_pathes.filter(isImage).map(e => path.resolve(thumbnailFolderPath, e));
         end3 = (new Date).getTime();
         console.log(`[scan thumbnail] ${(end3 - end1) / 1000}s  to read thumbnail dirs`);
-        initThumbnailDb(thumbnail_pathes);
+        thumbnailDb.init(thumbnail_pathes);
     
         let will_scan = _.sortBy(scan_path, e => e.length); //todo
         for(let ii = 0; ii < will_scan.length; ii++){
@@ -214,27 +214,6 @@ async function init() {
     });
 }
 
-function addToThumbnailDb(filePath) {
-    const key = path.basename(filePath, path.extname(filePath));
-    thumbnailDb[key] = filePath;
-}
-
-function initThumbnailDb(filePath) {
-    filePath.forEach(e => {
-        addToThumbnailDb(e);
-    })
-}
-
-function getThumbnailFromThumbnailFolder(outputPath) {
-    const key = path.basename(outputPath);
-    return thumbnailDb[key];
-}
-
-function getThumbCount() {
-    return _.keys(thumbnailDb).length;
-}
-
-global.getThumbCount = getThumbCount;
 
 const junk = require('junk');
 
@@ -397,72 +376,6 @@ function setUpFileWatch(scan_path) {
     };
 }
 
-async function initMecab() {
-    let parseAsync;
-    try {
-        const MeCab = require('mecab-async');
-        const mecab = new MeCab();
-        const _util = require('util');
-        parseAsync = _util.promisify(mecab.parse).bind(mecab);
-        const testTokens = await parseAsync("うちの娘の為ならば、俺はもしかしたら魔王も倒せるかもしれない");
-    } catch (e) {
-        parseAsync = null;
-    }
-
-    global.mecab_getTokens = async (str) => {
-        let result = [];
-        try {
-            if (parseAsync) {
-                //pre-processing of the str
-                str = path.basename(str, path.extname(str));
-                let pObj = serverUtil.parse(str);
-                if (pObj && pObj.title) {
-                    str = pObj.title;
-                }
-
-                //do the Mecab
-                let tokens = await parseAsync(str);
-                // console.log(tokens);
-
-                //handle the tokens
-                tokens = tokens
-                    .filter(row => {
-                        return ["名詞", "動詞"].includes(row[1]);
-                    })
-                    .map(row => row[0]);
-
-                //[apple, c, b, k, llll, p, p, p] 
-                // => 
-                // [apple, cbk, llll, ppp] 
-                let acToken = "";
-                const len = tokens.length;
-                let ii = 0;
-                while (ii < len) {
-                    let tempToken = tokens[ii];
-                    if (tempToken.length > 1) {
-                        if (acToken.length > 1) {
-                            result.push(acToken);
-                        }
-                        result.push(tempToken)
-                        acToken = "";
-                    } else if (tempToken.length === 1) {
-                        acToken += tempToken;
-                    }
-                    ii++;
-                }
-                //the last token
-                if (acToken.length > 1) {
-                    result.push(acToken);
-                }
-            }
-        } catch (e) {
-            console.warn(e);
-        } finally {
-            return result;
-        }
-    }
-}
-
 
 function getThumbnails(filePathes) {
     const isStringInput = _.isString(filePathes);
@@ -478,7 +391,7 @@ function getThumbnails(filePathes) {
         }
 
         const outputPath = getCacheOutputFolderPath(cachePath, filePath);
-        let thumb = getThumbnailFromThumbnailFolder(outputPath);
+        let thumb = thumbnailDb.getThumbnailFromThumbnailFolder(outputPath);
         if (thumb) {
             thumbnails[filePath] = fullPathToUrl(thumb);
         } else {
@@ -577,7 +490,7 @@ async function extractThumbnailFromZip(filePath, res, mode, config) {
             }
         }
 
-        const thumbnail = getThumbnailFromThumbnailFolder(outputPath);
+        const thumbnail = thumbnailDb.getThumbnailFromThumbnailFolder(outputPath);
         if (thumbnail) {
             sendImage(thumbnail);
         } else {
@@ -599,7 +512,7 @@ async function extractThumbnailFromZip(filePath, res, mode, config) {
             //compress into real thumbnail
             const outputFilePath = await thumbnailGenerator(thumbnailFolderPath, outputPath, path.basename(thumb));
             if (outputFilePath) {
-                addToThumbnailDb(outputFilePath);
+                thumbnailDb.addNewThumbnail(outputFilePath);
             }
         }
     } catch (e) {
@@ -654,7 +567,7 @@ app.post('/api/pregenerateThumbnails', async (req, res) => {
     const pregenBeginTime = getCurrentTime();
     const total = totalFiles.length;
 
-    const thumbnailNum = getThumbCount();
+    const thumbnailNum = thumbnailDb.getThumbCount();
     if (thumbnailNum / totalFiles.length > 0.3) {
         totalFiles = _.shuffle(totalFiles);
     }
@@ -758,6 +671,8 @@ app.post('/api/extract', async (req, res) => {
         const mecab_tokens = await global.mecab_getTokens(path);
 
         res.send({ files: tempFiles, musicFiles, videoFiles, path, stat, zipInfo, mecab_tokens });
+
+        historyDb.addOneRecord(filePath)
     }
 
     const outputPath = getCacheOutputFolderPath(cachePath, filePath);
@@ -858,6 +773,9 @@ app.post('/api/getGeneralInfo', async (req, res) => {
 //---------------------------
 const homePagePath = require("./routes/homePagePath");
 app.use(homePagePath);
+
+const getHistory = require("./routes/getHistory");
+app.use(getHistory);
 
 const lsdir = require("./routes/lsdir");
 app.use(lsdir);
