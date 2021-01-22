@@ -128,7 +128,12 @@ export default class OneBookOverview extends Component {
     const fp = this.getTextFromQuery();
 
     const images = files
-      .map(e => getFileUrl(e))
+      .map(e => {
+        //let url = getFileUrl(e);
+        let url = clientUtil.getDownloadLink(e);
+        url += "&thumbnailMode=true"
+       return url;
+      })
       .map((e, ii) => <SmartImage key={e} url={e} index={ii} fp={fp} />);
     return images;
   }

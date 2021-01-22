@@ -52,35 +52,22 @@ export default class AdminPage extends Component {
 
     requestHomePagePathes() {
         Sender.post("/api/homePagePath", {}, res => {
-            this.handleRes(res);
+            if (!res.isFailed()) {
+                let { dirs } = res.json;
+                this.setState({
+                    dirs: dirs || []
+                })
+            }
         });
     }
 
     askCacheInfo() {
         Sender.post("/api/cacheInfo", {}, res => {
-            this.handleCacheRes(res);
+            if (!res.isFailed()) {
+                let { totalSize, cacheNum, thumbCount } = res.json;
+                this.setState({ totalSize, cacheNum, thumbCount })
+            }
         });
-    }
-
-    handleCacheRes(res) {
-        if (!res.isFailed()) {
-            let { totalSize, cacheNum, thumbCount } = res.json;
-            this.setState({ totalSize, cacheNum, thumbCount })
-        }
-        this.res = res;
-        this.forceUpdate();
-    }
-
-    handleRes(res) {
-        if (!res.isFailed()) {
-            let { dirs } = res.json;
-            this.setState({
-                dirs: dirs || []
-            })
-        } else {
-            this.res = res;
-            this.forceUpdate();
-        }
     }
 
     onPrenerate(fastUpdateMode) {
@@ -122,7 +109,10 @@ export default class AdminPage extends Component {
             return d.getTime();
         });
 
-        const historyDom = _.keys(groupByDay).map(key => {
+        let keys = _.keys(groupByDay);
+        keys = _.sortBy(keys, e => -e);
+
+        const historyDom = keys.map(key => {
             const timeStr = dateFormat(new Date(parseInt(key)), "dddd, mmmm dS, yyyy");
             let items = groupByDay[key];
 

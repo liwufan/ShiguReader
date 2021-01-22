@@ -11,6 +11,7 @@ const _ = require('underscore');
 const isWindows = require('is-windows');
 const pathUtil = require("../pathUtil");
 const { isSub } = pathUtil;
+const historyDb = require("../models/historyDb");
 
 
 function isEqual(a, b) {
@@ -141,12 +142,16 @@ async function searchByTagAndAuthor(tag, author, text, onlyNeedFew) {
 
     const { getThumbnails } = serverUtil.common;
     const files = _.keys(fileInfos);
+    const all_pathes = [].concat(files, _.keys(imgFolders));
+    const fileNameToReadTime = await historyDb.getFileReadTime(all_pathes);
+
     return {
         tag, author, fileInfos,
         imgFolders, imgFolderInfo,
         dirs: dirResults, 
         thumbnails: getThumbnails(files), 
-        zipInfo: getZipInfo(files)
+        zipInfo: getZipInfo(files),
+        fileNameToReadTime
     };
 }
 
