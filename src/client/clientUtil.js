@@ -47,11 +47,11 @@ module.exports.getFileUrl = function (url) {
         return "";
     }
   
-    if (url.includes("thumbnails/") || url.includes("cache/") ) {
-        return "../" + encodeFileUrl(url); 
-    } else {
-        return getDownloadLink(url);
-    }
+    // if (url.includes("thumbnails/") || url.includes("cache/") ) {
+    //     return "../" + encodeFileUrl(url); 
+    // } else {
+    return getDownloadLink(url);
+    // }
 }
 
 const encodeFileUrl = module.exports.encodeFileUrl = function (url) {
@@ -182,6 +182,12 @@ module.exports.getVideoPlayerLink = function (path) {
 
 const getDownloadLink = module.exports.getDownloadLink = function (path) {
     if (!path) { return ""; }
+
+    if(path.includes("/api/download/?p")){
+       //loadingImage onReceiveUrl
+       return path;
+    }
+
     return "/api/download/?p=" + encodeURIComponent(path);
 }
 
